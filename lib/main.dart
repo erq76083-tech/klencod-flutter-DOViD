@@ -1296,9 +1296,14 @@ class AppState extends ChangeNotifier {
   String adsenseAnchorSlot = '';
   String customSponsorTargetUrl = '';
 
-  // Background Extraction Engines Map (Enabled/Disabled by Admin)
+  // Background Extraction Engines Map (Hyper-Cluster Multi-Server Matrix)
   Map<String, bool> engineStates = {
     'tikwm_ultra_hd': true,
+    'vxtwitter_fx_cluster': true,
+    'reddit_dash_engine': true,
+    'vimeo_config_engine': true,
+    'dailymotion_meta_engine': true,
+    'pinterest_stream_engine': true,
     'direct_post_json': true,
     'direct_post_form': true,
     'direct_get_query': true,
@@ -1306,6 +1311,8 @@ class AppState extends ChangeNotifier {
     'allorigins_post': true,
     'allorigins_get': true,
     'corsproxy_post': true,
+    'codetabs_tunnel': true,
+    'deep_page_scraper': true,
   };
 
   // Real Data Collections (Backed by SQLite Engine - Zero Dummy Data)
@@ -3521,51 +3528,112 @@ class VisualQrMatrixPainter extends CustomPainter {
 }
 
 // ============================================================================
-// SILENT BACKGROUND EXTRACTION & STREAMING SERVICE (Zero UI Jargon Leak)
+// SILENT HYPER-CLUSTER BACKGROUND EXTRACTION & STREAMING ENGINE
 // ============================================================================
 class DownloadService {
-  static Future<String> _resolveShortUrl(String url) async {
+  static const List<String> _userAgentPool = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+    'Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.88 Mobile Safari/537.36',
+  ];
+
+  static String _pickUserAgent([int seed = 0]) {
+    return _userAgentPool[seed.abs() % _userAgentPool.length];
+  }
+
+  /// Cleans tracking parameters and resolves short/redirect links across hops
+  static Future<String> _resolveAndCanonicalizeUrl(String rawUrl) async {
+    String url = rawUrl.trim();
+    // Extract first URL if user pasted extra text around the link
+    final urlMatch = RegExp(r'https?:\/\/[^\s"'<>]+').firstMatch(url);
+    if (urlMatch != null) {
+      url = urlMatch.group(0)!;
+    }
+
     final lowerUrl = url.toLowerCase();
-    if (!lowerUrl.contains('vt.tiktok.com') &&
-        !lowerUrl.contains('vm.tiktok.com') &&
-        !lowerUrl.contains('fb.watch') &&
-        !lowerUrl.contains('pin.it') &&
-        !lowerUrl.contains('t.co')) {
-      return url;
+    final needsRedirectUnwrap = lowerUrl.contains('vt.tiktok.com') ||
+        lowerUrl.contains('vm.tiktok.com') ||
+        lowerUrl.contains('tiktok.com/t/') ||
+        lowerUrl.contains('fb.watch') ||
+        lowerUrl.contains('facebook.com/share/') ||
+        lowerUrl.contains('instagram.com/share/') ||
+        lowerUrl.contains('pin.it') ||
+        lowerUrl.contains('t.co/') ||
+        lowerUrl.contains('redd.it/') ||
+        lowerUrl.contains('dai.ly/') ||
+        lowerUrl.contains('bit.ly/') ||
+        lowerUrl.contains('tinyurl.com/');
+
+    if (needsRedirectUnwrap) {
+      try {
+        final client = HttpClient();
+        client.connectionTimeout = const Duration(seconds: 7);
+        client.badCertificateCallback = (_, __, ___) => true;
+        final request = await client.getUrl(Uri.parse(url));
+        request.headers.set('User-Agent', _pickUserAgent(1));
+        request.followRedirects = true;
+        request.maxRedirects = 8;
+        final response = await request.close();
+        if (response.redirects.isNotEmpty) {
+          final loc = response.redirects.last.location;
+          url = loc.isAbsolute
+              ? loc.toString()
+              : Uri.parse(url).resolveUri(loc).toString();
+        }
+        await response.drain();
+        client.close();
+      } catch (_) {}
     }
+
+    // Strip tracking query parameters while keeping essential video identifiers
     try {
-      final client = HttpClient();
-      client.connectionTimeout = const Duration(seconds: 8);
-      client.badCertificateCallback = (_, __, ___) => true;
-      final request = await client.getUrl(Uri.parse(url));
-      request.followRedirects = true;
-      request.maxRedirects = 6;
-      final response = await request.close();
-      String finalUrl = url;
-      if (response.redirects.isNotEmpty) {
-        final loc = response.redirects.last.location;
-        finalUrl = loc.isAbsolute
-            ? loc.toString()
-            : Uri.parse(url).resolveUri(loc).toString();
+      final parsed = Uri.parse(url);
+      if (parsed.queryParameters.isNotEmpty) {
+        const blockedParams = {
+          'utm_source',
+          'utm_medium',
+          'utm_campaign',
+          'utm_term',
+          'utm_content',
+          'igshid',
+          'igsh',
+          'fbclid',
+          'gclid',
+          'si',
+          'feature',
+          '_r',
+          'checksum',
+          'is_from_webapp',
+          'sender_device',
+        };
+        final cleanParams = <String, String>{};
+        parsed.queryParameters.forEach((k, v) {
+          if (!blockedParams.contains(k.toLowerCase())) {
+            cleanParams[k] = v;
+          }
+        });
+        url = parsed
+            .replace(
+                queryParameters: cleanParams.isEmpty ? null : cleanParams)
+            .toString();
       }
-      await response.drain();
-      client.close();
-      return finalUrl;
-    } catch (_) {
-      return url;
-    }
+    } catch (_) {}
+
+    return url;
   }
 
   static Future<Map<String, String>> fetchQuickPreviewMetadata(
       String rawUrl) async {
+    final cleanUrl = await _resolveAndCanonicalizeUrl(rawUrl);
     final result = <String, String>{
       'title': '',
       'author': '',
       'thumbnail': '',
-      'platform': detectPlatform(rawUrl),
+      'platform': detectPlatform(cleanUrl),
     };
 
-    final ytId = extractYoutubeId(rawUrl);
+    final ytId = extractYoutubeId(cleanUrl);
     if (ytId != null) {
       result['thumbnail'] = 'https://img.youtube.com/vi/$ytId/hqdefault.jpg';
       try {
@@ -3573,7 +3641,7 @@ class DownloadService {
             'https://noembed.com/embed?url=${Uri.encodeComponent('https://www.youtube.com/watch?v=$ytId')}';
         final res = await http
             .get(Uri.parse(oembedUrl))
-            .timeout(const Duration(seconds: 6));
+            .timeout(const Duration(seconds: 5));
         if (res.statusCode == 200) {
           final data = jsonDecode(res.body);
           result['title'] = (data['title'] ?? '').toString();
@@ -3588,10 +3656,10 @@ class DownloadService {
 
     try {
       final noembed =
-          'https://noembed.com/embed?url=${Uri.encodeComponent(rawUrl)}';
+          'https://noembed.com/embed?url=${Uri.encodeComponent(cleanUrl)}';
       final res = await http
           .get(Uri.parse(noembed))
-          .timeout(const Duration(seconds: 6));
+          .timeout(const Duration(seconds: 5));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['title'] != null) result['title'] = data['title'].toString();
@@ -3618,17 +3686,30 @@ class DownloadService {
     String link = '';
     String hdLink = '';
     String audioLink = '';
-    String title =
-        (map['title'] ?? map['desc'] ?? map['text'] ?? '').toString();
+    String title = (map['title'] ??
+            map['desc'] ??
+            map['text'] ??
+            map['caption'] ??
+            map['filename'] ??
+            '')
+        .toString();
     String author = (map['author'] is Map
-            ? (map['author']['nickname'] ?? map['author']['unique_id'] ?? '')
-            : (map['author'] ?? map['uploader'] ?? map['owner'] ?? ''))
+            ? (map['author']['nickname'] ??
+                map['author']['unique_id'] ??
+                map['author']['name'] ??
+                '')
+            : (map['author'] ??
+                map['uploader'] ??
+                map['owner'] ??
+                map['channel'] ??
+                ''))
         .toString();
     String thumb = (map['thumbnail'] ??
             map['cover'] ??
             map['origin_cover'] ??
             map['picture'] ??
             map['image'] ??
+            map['thumb'] ??
             '')
         .toString();
     String durationText = '';
@@ -3659,6 +3740,9 @@ class DownloadService {
       map['play'],
       map['nwm_video_url'],
       map['wmplay'],
+      map['stream'],
+      map['sd'],
+      map['hd'],
     ];
     for (final c in candidates) {
       if (c is String && c.startsWith('http')) {
@@ -3667,52 +3751,74 @@ class DownloadService {
       }
     }
 
-    if (map['hdplay'] is String &&
-        map['hdplay'].toString().startsWith('http')) {
-      hdLink = map['hdplay'].toString();
-    }
-    if (map['music'] is String && map['music'].toString().startsWith('http')) {
-      audioLink = map['music'].toString();
-    } else if (map['audio'] is String &&
-        map['audio'].toString().startsWith('http')) {
-      audioLink = map['audio'].toString();
+    for (final hc in [map['hdplay'], map['hd'], map['hd_url'], map['url_hd']]) {
+      if (hc is String && hc.startsWith('http')) {
+        hdLink = hc;
+        break;
+      }
     }
 
-    if (link.isEmpty && map['data'] is Map) {
-      final sub = _normalizeServerPayload(map['data'], originalUrl, quality);
-      if (sub != null) return sub;
+    for (final ac in [
+      map['music'],
+      map['audio'],
+      map['audio_url'],
+      map['mp3'],
+      map['sound']
+    ]) {
+      if (ac is String && ac.startsWith('http')) {
+        audioLink = ac;
+        break;
+      }
     }
-    if (link.isEmpty && map['result'] is Map) {
-      final sub = _normalizeServerPayload(map['result'], originalUrl, quality);
-      if (sub != null) return sub;
+
+    for (final subKey in ['data', 'result', 'response', 'video', 'media']) {
+      if (link.isEmpty && map[subKey] is Map) {
+        final sub = _normalizeServerPayload(map[subKey], originalUrl, quality);
+        if (sub != null) return sub;
+      }
     }
 
     final mediaLists = [
       map['medias'],
       map['formats'],
       map['links'],
-      map['urls']
+      map['urls'],
+      map['picker'],
+      map['variants'],
+      map['streams'],
     ];
     for (final listCandidate in mediaLists) {
       if (listCandidate is List && listCandidate.isNotEmpty) {
         for (final item in listCandidate) {
           if (item is Map) {
-            final u =
-                (item['url'] ?? item['link'] ?? item['download'] ?? '')
-                    .toString();
-            final q = (item['quality'] ?? item['ext'] ?? item['type'] ?? '')
+            final u = (item['url'] ??
+                    item['link'] ??
+                    item['download'] ??
+                    item['src'] ??
+                    '')
+                .toString();
+            final q = (item['quality'] ??
+                    item['ext'] ??
+                    item['type'] ??
+                    item['format'] ??
+                    item['label'] ??
+                    '')
                 .toString()
                 .toLowerCase();
             if (u.startsWith('http')) {
               if (link.isEmpty) link = u;
-              if (q.contains('hd') ||
+              if (q.contains('4k') ||
+                  q.contains('2160') ||
                   q.contains('1080') ||
+                  q.contains('hd') ||
+                  q.contains('high') ||
                   q.contains('720')) {
                 hdLink = u;
               }
               if (q.contains('mp3') ||
                   q.contains('audio') ||
-                  q.contains('m4a')) {
+                  q.contains('m4a') ||
+                  q.contains('opus')) {
                 audioLink = u;
               }
             }
@@ -3727,7 +3833,8 @@ class DownloadService {
 
     if (quality == 'audio' && audioLink.isNotEmpty) {
       link = audioLink;
-    } else if ((quality == '4k' || quality == '1080') && hdLink.isNotEmpty) {
+    } else if ((quality == '4k' || quality == '1080' || quality == 'auto') &&
+        hdLink.isNotEmpty) {
       link = hdLink;
     }
 
@@ -3751,6 +3858,7 @@ class DownloadService {
     };
   }
 
+  /// Executes a multi-wave, multi-cluster silent background extraction pipeline
   static Future<Map<String, dynamic>> downloadSilently(
     String originalUrl, {
     String quality = 'auto',
@@ -3763,36 +3871,83 @@ class DownloadService {
       };
     }
 
-    final url = await _resolveShortUrl(originalUrl);
+    final url = await _resolveAndCanonicalizeUrl(originalUrl);
     final platform = detectPlatform(url);
     final quickMetaFuture = fetchQuickPreviewMetadata(url);
 
-    const desktopUserAgent =
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
-    final headers = {
-      'User-Agent': desktopUserAgent,
+    final baseHeaders = {
+      'User-Agent': _pickUserAgent(0),
       'Referer': url,
       'Accept': 'application/json, text/plain, */*',
     };
 
-    final allStrategies =
-        <String, Future<Map<String, dynamic>?> Function(String)>{
-      if (platform == 'tiktok')
-        'tikwm_ultra_hd': (u) => _tikwmFallback(u, quality),
-      'direct_post_json': (u) => _directPostJson(u, headers, quality),
-      'direct_post_form': (u) => _directPostForm(u, headers, quality),
-      'direct_get_query': (u) => _directGetQuery(u, headers, quality),
-      if (platform != 'tiktok')
-        'tikwm_engine': (u) => _tikwmFallback(u, quality),
-      'cobalt_multi_engine': (u) => _cobaltEngine(u, quality),
-      'allorigins_post': (u) => _alloriginsPost(u, headers, quality),
-      'allorigins_get': (u) => _alloriginsGet(u, headers, quality),
-      'corsproxy_post': (u) => _corsproxy(u, headers, quality),
-    };
+    // Build ordered strategy pipeline tailored to the detected platform
+    final strategyPipeline =
+        <MapEntry<String, Future<Map<String, dynamic>?> Function(String)>>[];
+
+    // Wave 1: Platform-native ultra-fast specialized extractors
+    if (platform == 'tiktok') {
+      strategyPipeline.add(
+          MapEntry('tikwm_ultra_hd', (u) => _tikwmClusterEngine(u, quality)));
+    } else if (platform == 'twitter') {
+      strategyPipeline.add(MapEntry(
+          'vxtwitter_fx_cluster', (u) => _twitterVxFxClusterEngine(u, quality)));
+    } else if (platform == 'reddit') {
+      strategyPipeline.add(
+          MapEntry('reddit_dash_engine', (u) => _redditDirectEngine(u, quality)));
+    } else if (platform == 'vimeo') {
+      strategyPipeline.add(
+          MapEntry('vimeo_config_engine', (u) => _vimeoConfigEngine(u, quality)));
+    } else if (platform == 'dailymotion') {
+      strategyPipeline.add(MapEntry(
+          'dailymotion_meta_engine', (u) => _dailymotionMetaEngine(u, quality)));
+    } else if (platform == 'pinterest') {
+      strategyPipeline.add(MapEntry(
+          'pinterest_stream_engine', (u) => _pinterestDirectEngine(u, quality)));
+    }
+
+    // Wave 2: Primary Backend Server Multi-Protocol Matrix
+    strategyPipeline.addAll([
+      MapEntry(
+          'direct_post_json', (u) => _directPostJson(u, baseHeaders, quality)),
+      MapEntry(
+          'direct_post_form', (u) => _directPostForm(u, baseHeaders, quality)),
+      MapEntry(
+          'direct_get_query', (u) => _directGetQuery(u, baseHeaders, quality)),
+    ]);
+
+    // Wave 3: Distributed Multi-Instance Cobalt Cluster (v10 + v7 schemas)
+    strategyPipeline.add(
+        MapEntry('cobalt_multi_engine', (u) => _cobaltMultiCluster(u, quality)));
+
+    // Wave 4: Cross-Platform Fallback APIs (if URL was redirected/shared)
+    if (platform != 'tiktok') {
+      strategyPipeline.add(
+          MapEntry('tikwm_ultra_hd', (u) => _tikwmClusterEngine(u, quality)));
+    }
+    if (platform != 'twitter') {
+      strategyPipeline.add(MapEntry(
+          'vxtwitter_fx_cluster', (u) => _twitterVxFxClusterEngine(u, quality)));
+    }
+
+    // Wave 5: Anti-Block Proxy & Relay Tunnels
+    strategyPipeline.addAll([
+      MapEntry(
+          'allorigins_post', (u) => _alloriginsPost(u, baseHeaders, quality)),
+      MapEntry(
+          'allorigins_get', (u) => _alloriginsGet(u, baseHeaders, quality)),
+      MapEntry('corsproxy_post', (u) => _corsproxy(u, baseHeaders, quality)),
+      MapEntry(
+          'codetabs_tunnel', (u) => _codetabsTunnel(u, baseHeaders, quality)),
+    ]);
+
+    // Wave 6: Deep Page OpenGraph / JSON-LD / Player State Stream Extractor
+    strategyPipeline.add(
+        MapEntry('deep_page_scraper', (u) => _deepPageStreamExtractor(u, quality)));
 
     final engineStates = AppState().engineStates;
 
-    for (final entry in allStrategies.entries) {
+    for (final entry in strategyPipeline) {
       if (engineStates[entry.key] == false) continue;
 
       final sw = Stopwatch()..start();
@@ -3801,7 +3956,7 @@ class DownloadService {
         sw.stop();
         final ok = result != null &&
             result['status'] == 'success' &&
-            (result['answer'] ?? '').toString().isNotEmpty;
+            (result['answer'] ?? '').toString().startsWith('http');
 
         await AppState().recordSilentBypassAttempt(
           url: url,
@@ -3837,27 +3992,41 @@ class DownloadService {
         );
       }
     }
+
     return {
       'status': 'error',
       'message':
-          'تعذر معالجة الرابط حالياً. تأكد من صحة الرابط وأن الفيديو متاح للعامة.',
+          'تعذر استخراج الرابط المباشر حالياً. تأكد من صحة الرابط وأن الفيديو عام.',
     };
   }
 
+  // --- Strategy 1: Primary Server JSON / Form / GET ---
   static Future<Map<String, dynamic>?> _directPostJson(
       String url, Map<String, String> headers, String quality) async {
-    try {
-      final res = await http
-          .post(
-            Uri.parse(kApiEndpoint),
-            headers: {...headers, 'Content-Type': 'application/json'},
-            body: jsonEncode({'text': url, 'url': url, 'quality': quality}),
-          )
-          .timeout(const Duration(seconds: 20));
-      if (res.statusCode == 200) {
-        return _normalizeServerPayload(jsonDecode(res.body), url, quality);
-      }
-    } catch (_) {}
+    for (final endpoint in [
+      kApiEndpoint,
+      '$kApiEndpoint?action=download',
+    ]) {
+      try {
+        final res = await http
+            .post(
+              Uri.parse(endpoint),
+              headers: {...headers, 'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'text': url,
+                'url': url,
+                'quality': quality,
+                'format': quality == 'audio' ? 'mp3' : 'mp4',
+              }),
+            )
+            .timeout(const Duration(seconds: 14));
+        if (res.statusCode == 200) {
+          final parsed =
+              _normalizeServerPayload(jsonDecode(res.body), url, quality);
+          if (parsed != null) return parsed;
+        }
+      } catch (_) {}
+    }
     return null;
   }
 
@@ -3871,9 +4040,14 @@ class DownloadService {
               ...headers,
               'Content-Type': 'application/x-www-form-urlencoded'
             },
-            body: {'text': url, 'url': url, 'quality': quality},
+            body: {
+              'text': url,
+              'url': url,
+              'quality': quality,
+              'action': 'download',
+            },
           )
-          .timeout(const Duration(seconds: 20));
+          .timeout(const Duration(seconds: 14));
       if (res.statusCode == 200) {
         return _normalizeServerPayload(jsonDecode(res.body), url, quality);
       }
@@ -3885,10 +4059,10 @@ class DownloadService {
       String url, Map<String, String> headers, String quality) async {
     try {
       final target =
-          '$kApiEndpoint?text=${Uri.encodeComponent(url)}&url=${Uri.encodeComponent(url)}&quality=$quality';
+          '$kApiEndpoint?text=${Uri.encodeComponent(url)}&url=${Uri.encodeComponent(url)}&quality=$quality&_t=${DateTime.now().millisecondsSinceEpoch}';
       final res = await http
           .get(Uri.parse(target), headers: headers)
-          .timeout(const Duration(seconds: 18));
+          .timeout(const Duration(seconds: 14));
       if (res.statusCode == 200) {
         return _normalizeServerPayload(jsonDecode(res.body), url, quality);
       }
@@ -3896,59 +4070,233 @@ class DownloadService {
     return null;
   }
 
-  static Future<Map<String, dynamic>?> _tikwmFallback(
+  // --- Strategy 2: TikWM Dual-Node Cluster (TikTok HD No-Watermark & MP3) ---
+  static Future<Map<String, dynamic>?> _tikwmClusterEngine(
       String url, String quality) async {
     if (!url.toLowerCase().contains('tiktok.com')) return null;
+    final endpoints = [
+      'https://www.tikwm.com/api/',
+      'https://tikwm.com/api/',
+    ];
+    for (int i = 0; i < endpoints.length; i++) {
+      try {
+        final res = await http.post(
+          Uri.parse(endpoints[i]),
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'User-Agent': _pickUserAgent(i),
+            'Accept': 'application/json',
+          },
+          body: {'url': url, 'hd': '1', 'count': '12', 'cursor': '0'},
+        ).timeout(const Duration(seconds: 12));
+        if (res.statusCode == 200) {
+          final j = jsonDecode(res.body);
+          if (j['code'] == 0 && j['data'] != null) {
+            final d = j['data'];
+            String fixUrl(dynamic raw) {
+              final s = (raw ?? '').toString();
+              if (s.isEmpty) return '';
+              if (s.startsWith('http')) return s;
+              return 'https://www.tikwm.com$s';
+            }
+
+            final hd = fixUrl(d['hdplay']);
+            final play = fixUrl(d['play']);
+            final wm = fixUrl(d['wmplay']);
+            final music = fixUrl(d['music']);
+            final cover = fixUrl(d['origin_cover'] ?? d['cover']);
+
+            final chosenLink = (quality == 'audio' && music.isNotEmpty)
+                ? music
+                : (hd.isNotEmpty ? hd : (play.isNotEmpty ? play : wm));
+
+            if (chosenLink.isNotEmpty) {
+              final durSec =
+                  int.tryParse((d['duration'] ?? '0').toString()) ?? 0;
+              final sizeBytes = int.tryParse(
+                      (d['hd_size'] ?? d['size'] ?? '0').toString()) ??
+                  0;
+              return {
+                'status': 'success',
+                'answer': chosenLink,
+                'hdLink': hd.isNotEmpty ? hd : play,
+                'audioLink': music,
+                'title': (d['title'] ?? 'فيديو TikTok بدون علامة مائية')
+                    .toString(),
+                'author': (d['author'] is Map
+                        ? (d['author']['nickname'] ??
+                            d['author']['unique_id'] ??
+                            '')
+                        : '')
+                    .toString(),
+                'thumbnail': cover,
+                'duration': formatDurationSeconds(durSec),
+                'fileSize': sizeBytes > 0 ? formatBytes(sizeBytes) : '',
+                'quality': quality == 'audio' ? 'MP3 Audio' : 'HD No-Watermark',
+              };
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  // --- Strategy 3: X / Twitter Direct vxTwitter & fxTwitter API Cluster ---
+  static Future<Map<String, dynamic>?> _twitterVxFxClusterEngine(
+      String url, String quality) async {
+    final match = RegExp(
+            r'(?:twitter\.com|x\.com)\/([^\/]+)\/status\/(\d+)',
+            caseSensitive: false)
+        .firstMatch(url);
+    if (match == null) return null;
+    final user = match.group(1)!;
+    final statusId = match.group(2)!;
+
+    // 1. Try api.vxtwitter.com
     try {
-      final res = await http.post(
-        Uri.parse('https://www.tikwm.com/api/'),
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: {'url': url, 'hd': '1'},
-      ).timeout(const Duration(seconds: 16));
+      final vxUrl = 'https://api.vxtwitter.com/$user/status/$statusId';
+      final res = await http.get(
+        Uri.parse(vxUrl),
+        headers: {'User-Agent': _pickUserAgent(1), 'Accept': 'application/json'},
+      ).timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
         final j = jsonDecode(res.body);
-        if (j['code'] == 0 && j['data'] != null) {
-          final d = j['data'];
-          String fixUrl(dynamic raw) {
-            final s = (raw ?? '').toString();
-            if (s.isEmpty) return '';
-            if (s.startsWith('http')) return s;
-            return 'https://www.tikwm.com$s';
+        final mediaList = j['media_extended'];
+        if (mediaList is List && mediaList.isNotEmpty) {
+          String videoUrl = '';
+          String thumb = '';
+          int durSec = 0;
+          for (final m in mediaList) {
+            if (m is Map) {
+              final u = (m['url'] ?? '').toString();
+              if (u.startsWith('http')) {
+                videoUrl = u;
+                thumb = (m['thumbnail_url'] ?? '').toString();
+                final dMs =
+                    int.tryParse((m['duration_millis'] ?? '0').toString()) ?? 0;
+                if (dMs > 0) durSec = (dMs / 1000).round();
+                break;
+              }
+            }
           }
-
-          final hd = fixUrl(d['hdplay']);
-          final play = fixUrl(d['play']);
-          final wm = fixUrl(d['wmplay']);
-          final music = fixUrl(d['music']);
-          final cover = fixUrl(d['origin_cover'] ?? d['cover']);
-
-          final chosenLink = (quality == 'audio' && music.isNotEmpty)
-              ? music
-              : (hd.isNotEmpty ? hd : (play.isNotEmpty ? play : wm));
-
-          if (chosenLink.isNotEmpty) {
-            final durSec = int.tryParse((d['duration'] ?? '0').toString()) ?? 0;
-            final sizeBytes =
-                int.tryParse((d['hd_size'] ?? d['size'] ?? '0').toString()) ??
-                    0;
+          if (videoUrl.isNotEmpty) {
             return {
               'status': 'success',
-              'answer': chosenLink,
-              'hdLink': hd.isNotEmpty ? hd : play,
-              'audioLink': music,
-              'title':
-                  (d['title'] ?? 'فيديو TikTok بدون علامة مائية').toString(),
-              'author': (d['author'] is Map
-                      ? (d['author']['nickname'] ??
-                          d['author']['unique_id'] ??
-                          '')
-                      : '')
-                  .toString(),
-              'thumbnail': cover,
+              'answer': videoUrl,
+              'hdLink': videoUrl,
+              'audioLink': '',
+              'title': (j['text'] ?? 'فيديو X / Twitter').toString(),
+              'author':
+                  (j['user_name'] ?? j['user_screen_name'] ?? user).toString(),
+              'thumbnail': thumb,
               'duration': formatDurationSeconds(durSec),
-              'fileSize': sizeBytes > 0 ? formatBytes(sizeBytes) : '',
-              'quality': quality == 'audio' ? 'MP3 Audio' : 'HD No-Watermark',
+              'fileSize': '',
             };
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 2. Try api.fxtwitter.com
+    try {
+      final fxUrl = 'https://api.fxtwitter.com/$user/status/$statusId';
+      final res = await http.get(
+        Uri.parse(fxUrl),
+        headers: {'User-Agent': _pickUserAgent(2), 'Accept': 'application/json'},
+      ).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        final j = jsonDecode(res.body);
+        final tweet = j['tweet'];
+        if (tweet is Map && tweet['media'] is Map) {
+          final videos = tweet['media']['videos'];
+          if (videos is List && videos.isNotEmpty) {
+            final v = videos.first;
+            final videoUrl = (v['url'] ?? '').toString();
+            if (videoUrl.startsWith('http')) {
+              return {
+                'status': 'success',
+                'answer': videoUrl,
+                'hdLink': videoUrl,
+                'audioLink': '',
+                'title': (tweet['text'] ?? 'فيديو X / Twitter').toString(),
+                'author': (tweet['author'] is Map
+                        ? (tweet['author']['name'] ?? user)
+                        : user)
+                    .toString(),
+                'thumbnail': (v['thumbnail_url'] ?? '').toString(),
+                'duration': v['duration'] != null
+                    ? formatDurationSeconds(
+                        (double.tryParse(v['duration'].toString()) ?? 0)
+                            .round())
+                    : '',
+                'fileSize': '',
+              };
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    return null;
+  }
+
+  // --- Strategy 4: Reddit Direct JSON + DASH Stream Resolver ---
+  static Future<Map<String, dynamic>?> _redditDirectEngine(
+      String url, String quality) async {
+    if (!url.toLowerCase().contains('reddit.com') &&
+        !url.toLowerCase().contains('redd.it')) {
+      return null;
+    }
+    try {
+      final clean = url.split('?').first.replaceAll(RegExp(r'\/+$'), '');
+      final jsonUrl = '$clean.json';
+      final res = await http.get(
+        Uri.parse(jsonUrl),
+        headers: {'User-Agent': _pickUserAgent(0), 'Accept': 'application/json'},
+      ).timeout(const Duration(seconds: 11));
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(res.body);
+        if (decoded is List && decoded.isNotEmpty) {
+          final children = decoded[0]['data']?['children'];
+          if (children is List && children.isNotEmpty) {
+            final post = children[0]['data'];
+            if (post is Map) {
+              final title = (post['title'] ?? 'فيديو Reddit').toString();
+              final author = (post['author'] ?? '').toString();
+              final thumb = (post['thumbnail'] ?? '').toString();
+              final secureMedia = post['secure_media'] ??
+                  post['media'] ??
+                  (post['crosspost_parent_list'] is List &&
+                          (post['crosspost_parent_list'] as List).isNotEmpty
+                      ? post['crosspost_parent_list'][0]['secure_media']
+                      : null);
+              if (secureMedia is Map && secureMedia['reddit_video'] is Map) {
+                final rv = secureMedia['reddit_video'];
+                final fallbackUrl = (rv['fallback_url'] ?? '')
+                    .toString()
+                    .replaceAll('?source=fallback', '');
+                if (fallbackUrl.startsWith('http')) {
+                  final base = fallbackUrl.substring(
+                      0, fallbackUrl.lastIndexOf('/'));
+                  final audioUrl = '$base/DASH_AUDIO_128.mp4';
+                  return {
+                    'status': 'success',
+                    'answer': fallbackUrl,
+                    'hdLink': fallbackUrl,
+                    'audioLink': audioUrl,
+                    'title': title,
+                    'author': author,
+                    'thumbnail': thumb.startsWith('http') ? thumb : '',
+                    'duration': rv['duration'] != null
+                        ? formatDurationSeconds(
+                            int.tryParse(rv['duration'].toString()) ?? 0)
+                        : '',
+                    'fileSize': '',
+                  };
+                }
+              }
+            }
           }
         }
       }
@@ -3956,35 +4304,53 @@ class DownloadService {
     return null;
   }
 
-  static Future<Map<String, dynamic>?> _cobaltEngine(
+  // --- Strategy 5: Vimeo Direct Player Config Engine ---
+  static Future<Map<String, dynamic>?> _vimeoConfigEngine(
       String url, String quality) async {
+    final match =
+        RegExp(r'vimeo\.com\/(?:video\/)?(\d+)').firstMatch(url.toLowerCase());
+    if (match == null) return null;
+    final videoId = match.group(1)!;
     try {
-      final res = await http
-          .post(
-            Uri.parse('https://api.cobalt.tools/api/json'),
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({
-              'url': url,
-              'vQuality': quality == '4k'
-                  ? 'max'
-                  : (quality == '720' ? '720' : '1080'),
-              'isAudioOnly': quality == 'audio',
-            }),
-          )
-          .timeout(const Duration(seconds: 16));
+      final configUrl = 'https://player.vimeo.com/video/$videoId/config';
+      final res = await http.get(
+        Uri.parse(configUrl),
+        headers: {'User-Agent': _pickUserAgent(1), 'Referer': url},
+      ).timeout(const Duration(seconds: 11));
       if (res.statusCode == 200) {
         final j = jsonDecode(res.body);
-        final link = (j['url'] ?? '').toString();
-        if (link.startsWith('http')) {
+        final progressive = j['request']?['files']?['progressive'];
+        String bestUrl = '';
+        String hdUrl = '';
+        if (progressive is List && progressive.isNotEmpty) {
+          for (final p in progressive) {
+            if (p is Map) {
+              final u = (p['url'] ?? '').toString();
+              final q = (p['quality'] ?? '').toString();
+              if (u.startsWith('http')) {
+                if (bestUrl.isEmpty) bestUrl = u;
+                if (q.contains('1080') || q.contains('720')) hdUrl = u;
+              }
+            }
+          }
+        }
+        if (bestUrl.isNotEmpty) {
+          final videoMeta = j['video'];
           return {
             'status': 'success',
-            'answer': link,
-            'hdLink': link,
-            'audioLink': quality == 'audio' ? link : '',
-            'title': (j['filename'] ?? '').toString(),
+            'answer': hdUrl.isNotEmpty ? hdUrl : bestUrl,
+            'hdLink': hdUrl.isNotEmpty ? hdUrl : bestUrl,
+            'audioLink': '',
+            'title': (videoMeta?['title'] ?? 'فيديو Vimeo').toString(),
+            'author':
+                (videoMeta?['owner']?['name'] ?? '').toString(),
+            'thumbnail':
+                (videoMeta?['thumbs']?['base'] ?? '').toString(),
+            'duration': videoMeta?['duration'] != null
+                ? formatDurationSeconds(
+                    int.tryParse(videoMeta['duration'].toString()) ?? 0)
+                : '',
+            'fileSize': '',
           };
         }
       }
@@ -3992,6 +4358,173 @@ class DownloadService {
     return null;
   }
 
+  // --- Strategy 6: Dailymotion Direct Player Metadata Engine ---
+  static Future<Map<String, dynamic>?> _dailymotionMetaEngine(
+      String url, String quality) async {
+    final match = RegExp(
+            r'(?:dailymotion\.com\/video\/|dai\.ly\/)([a-zA-Z0-9]+)')
+        .firstMatch(url);
+    if (match == null) return null;
+    final videoId = match.group(1)!;
+    try {
+      final metaUrl =
+          'https://www.dailymotion.com/player/metadata/video/$videoId';
+      final res = await http.get(
+        Uri.parse(metaUrl),
+        headers: {'User-Agent': _pickUserAgent(0)},
+      ).timeout(const Duration(seconds: 11));
+      if (res.statusCode == 200) {
+        final j = jsonDecode(res.body);
+        final qualities = j['qualities'];
+        String streamUrl = '';
+        if (qualities is Map) {
+          for (final qKey in ['1080', '720', '480', 'auto']) {
+            final list = qualities[qKey];
+            if (list is List && list.isNotEmpty) {
+              final u = (list.first['url'] ?? '').toString();
+              if (u.startsWith('http')) {
+                streamUrl = u;
+                break;
+              }
+            }
+          }
+        }
+        if (streamUrl.isNotEmpty) {
+          final posters = j['posters'];
+          String thumb = '';
+          if (posters is Map && posters.isNotEmpty) {
+            thumb = posters.values.last.toString();
+          }
+          return {
+            'status': 'success',
+            'answer': streamUrl,
+            'hdLink': streamUrl,
+            'audioLink': '',
+            'title': (j['title'] ?? 'فيديو Dailymotion').toString(),
+            'author': (j['owner']?['username'] ?? '').toString(),
+            'thumbnail': thumb,
+            'duration': j['duration'] != null
+                ? formatDurationSeconds(
+                    int.tryParse(j['duration'].toString()) ?? 0)
+                : '',
+            'fileSize': '',
+          };
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  // --- Strategy 7: Pinterest Direct Video Stream Extractor ---
+  static Future<Map<String, dynamic>?> _pinterestDirectEngine(
+      String url, String quality) async {
+    if (!url.toLowerCase().contains('pinterest.') &&
+        !url.toLowerCase().contains('pin.it')) {
+      return null;
+    }
+    try {
+      final res = await http.get(
+        Uri.parse(url),
+        headers: {'User-Agent': _pickUserAgent(0)},
+      ).timeout(const Duration(seconds: 12));
+      if (res.statusCode == 200) {
+        final body = res.body;
+        final mp4Match = RegExp(
+                r'https:\/\/v\.pinimg\.com\/videos\/[^\s"\]+\.mp4')
+            .firstMatch(body);
+        if (mp4Match != null) {
+          final videoUrl = mp4Match.group(0)!;
+          final thumbMatch = RegExp(
+                  r'https:\/\/i\.pinimg\.com\/originals\/[^\s"\]+\.(?:jpg|png)')
+              .firstMatch(body);
+          return {
+            'status': 'success',
+            'answer': videoUrl,
+            'hdLink': videoUrl,
+            'audioLink': '',
+            'title': 'فيديو Pinterest عالي الدقة',
+            'author': 'Pinterest Creator',
+            'thumbnail': thumbMatch?.group(0) ?? '',
+            'duration': '',
+            'fileSize': '',
+          };
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  // --- Strategy 8: Multi-Instance Cobalt Cluster (v10 & v7 Compatible) ---
+  static Future<Map<String, dynamic>?> _cobaltMultiCluster(
+      String url, String quality) async {
+    final cobaltNodes = [
+      'https://api.cobalt.tools/',
+      'https://api.cobalt.tools/api/json',
+      'https://cobalt-api.kwiatekmiki.com/',
+      'https://cobalt.api.timelessnesses.me/',
+    ];
+
+    for (final node in cobaltNodes) {
+      try {
+        final isLegacy = node.endsWith('/api/json');
+        final payload = isLegacy
+            ? {
+                'url': url,
+                'vQuality': quality == '4k'
+                    ? 'max'
+                    : (quality == '720' ? '720' : '1080'),
+                'isAudioOnly': quality == 'audio',
+                'aFormat': 'mp3',
+              }
+            : {
+                'url': url,
+                'videoQuality': quality == '4k'
+                    ? 'max'
+                    : (quality == '720' ? '720' : '1080'),
+                'downloadMode': quality == 'audio' ? 'audio' : 'auto',
+                'audioFormat': 'mp3',
+              };
+
+        final res = await http
+            .post(
+              Uri.parse(node),
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'User-Agent': _pickUserAgent(0),
+              },
+              body: jsonEncode(payload),
+            )
+            .timeout(const Duration(seconds: 12));
+
+        if (res.statusCode == 200) {
+          final j = jsonDecode(res.body);
+          String link = (j['url'] ?? '').toString();
+          if (link.isEmpty && j['picker'] is List && (j['picker'] as List).isNotEmpty) {
+            final firstPick = (j['picker'] as List).first;
+            if (firstPick is Map) {
+              link = (firstPick['url'] ?? '').toString();
+            }
+          }
+          if (link.startsWith('http')) {
+            return {
+              'status': 'success',
+              'answer': link,
+              'hdLink': link,
+              'audioLink':
+                  (quality == 'audio' || j['audio'] != null)
+                      ? (j['audio'] ?? link).toString()
+                      : '',
+              'title': (j['filename'] ?? '').toString(),
+            };
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  // --- Strategy 9-12: Proxy & Relay Tunnels ---
   static Future<Map<String, dynamic>?> _alloriginsPost(
       String url, Map<String, String> headers, String quality) async {
     try {
@@ -4001,9 +4534,9 @@ class DownloadService {
           .post(
             Uri.parse(proxy),
             headers: {...headers, 'Content-Type': 'application/json'},
-            body: jsonEncode({'text': url, 'quality': quality}),
+            body: jsonEncode({'text': url, 'url': url, 'quality': quality}),
           )
-          .timeout(const Duration(seconds: 20));
+          .timeout(const Duration(seconds: 15));
       if (res.statusCode == 200) {
         return _normalizeServerPayload(jsonDecode(res.body), url, quality);
       }
@@ -4014,12 +4547,13 @@ class DownloadService {
   static Future<Map<String, dynamic>?> _alloriginsGet(
       String url, Map<String, String> headers, String quality) async {
     try {
-      final target = '$kApiEndpoint?text=${Uri.encodeComponent(url)}';
+      final target =
+          '$kApiEndpoint?text=${Uri.encodeComponent(url)}&url=${Uri.encodeComponent(url)}&quality=$quality';
       final proxy =
           'https://api.allorigins.win/get?url=${Uri.encodeComponent(target)}&timestamp=${DateTime.now().millisecondsSinceEpoch}';
       final res = await http
           .get(Uri.parse(proxy), headers: headers)
-          .timeout(const Duration(seconds: 20));
+          .timeout(const Duration(seconds: 15));
       if (res.statusCode == 200) {
         final wrapper = jsonDecode(res.body);
         if (wrapper['contents'] != null) {
@@ -4040,13 +4574,121 @@ class DownloadService {
           .post(
             Uri.parse(proxy),
             headers: {...headers, 'Content-Type': 'application/json'},
-            body: jsonEncode({'text': url, 'quality': quality}),
+            body: jsonEncode({'text': url, 'url': url, 'quality': quality}),
           )
-          .timeout(const Duration(seconds: 20));
+          .timeout(const Duration(seconds: 15));
       if (res.statusCode == 200) {
         return _normalizeServerPayload(jsonDecode(res.body), url, quality);
       }
     } catch (_) {}
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> _codetabsTunnel(
+      String url, Map<String, String> headers, String quality) async {
+    try {
+      final target =
+          '$kApiEndpoint?text=${Uri.encodeComponent(url)}&url=${Uri.encodeComponent(url)}&quality=$quality';
+      final proxy =
+          'https://api.codetabs.com/v1/proxy?quest=${Uri.encodeComponent(target)}';
+      final res = await http
+          .get(Uri.parse(proxy), headers: headers)
+          .timeout(const Duration(seconds: 15));
+      if (res.statusCode == 200) {
+        return _normalizeServerPayload(jsonDecode(res.body), url, quality);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  // --- Strategy 13: Deep Page OpenGraph / JSON-LD / Player State Extractor ---
+  static Future<Map<String, dynamic>?> _deepPageStreamExtractor(
+      String url, String quality) async {
+    final crawlerAgents = [
+      'Mozilla/5.0 (compatible; TelegramBot/1.0)',
+      'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
+      _pickUserAgent(2),
+    ];
+
+    for (final ua in crawlerAgents) {
+      try {
+        final res = await http.get(
+          Uri.parse(url),
+          headers: {
+            'User-Agent': ua,
+            'Accept':
+                'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
+          },
+        ).timeout(const Duration(seconds: 12));
+
+        if (res.statusCode != 200) continue;
+        final html = res.body
+            .replaceAll(r'\/', '/')
+            .replaceAll(r'\u0026', '&')
+            .replaceAll(r'\u002F', '/')
+            .replaceAll('&amp;', '&');
+
+        String videoUrl = '';
+        String hdUrl = '';
+
+        // 1. Check HD / SD JSON keys common in FB, IG, Threads, TikTok, etc.
+        final hdPatterns = [
+          RegExp(r'"playable_url_quality_hd"\s*:\s*"(https?:\/\/[^"]+)"'),
+          RegExp(r'"browser_native_hd_url"\s*:\s*"(https?:\/\/[^"]+)"'),
+          RegExp(r'"hd_src"\s*:\s*"(https?:\/\/[^"]+)"'),
+          RegExp(r'"contentUrl"\s*:\s*"(https?:\/\/[^"]+\.mp4[^"]*)"'),
+          RegExp(r'"video_url"\s*:\s*"(https?:\/\/[^"]+)"'),
+          RegExp(r'"playable_url"\s*:\s*"(https?:\/\/[^"]+)"'),
+          RegExp(r'"browser_native_sd_url"\s*:\s*"(https?:\/\/[^"]+)"'),
+        ];
+        for (final pat in hdPatterns) {
+          final m = pat.firstMatch(html);
+          if (m != null) {
+            final candidate = m.group(1)!;
+            if (candidate.startsWith('http')) {
+              if (hdUrl.isEmpty) hdUrl = candidate;
+              if (videoUrl.isEmpty) videoUrl = candidate;
+            }
+          }
+        }
+
+        // 2. Check OpenGraph og:video:secure_url / og:video
+        if (videoUrl.isEmpty) {
+          final ogMatch = RegExp(
+                  r'<meta[^>]+property=["'](?:og:video:secure_url|og:video:url|og:video|twitter:player:stream)["'][^>]+content=["'](https?:\/\/[^"']+)["']',
+                  caseSensitive: false)
+              .firstMatch(html);
+          if (ogMatch != null) {
+            final c = ogMatch.group(1)!;
+            if (c.contains('.mp4') ||
+                c.contains('video') ||
+                c.contains('cdn')) {
+              videoUrl = c;
+            }
+          }
+        }
+
+        if (videoUrl.isNotEmpty) {
+          final titleMatch = RegExp(
+                  r'<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']',
+                  caseSensitive: false)
+              .firstMatch(html);
+          final thumbMatch = RegExp(
+                  r'<meta[^>]+property=["']og:image["'][^>]+content=["'](https?:\/\/[^"']+)["']',
+                  caseSensitive: false)
+              .firstMatch(html);
+          return {
+            'status': 'success',
+            'answer': hdUrl.isNotEmpty ? hdUrl : videoUrl,
+            'hdLink': hdUrl.isNotEmpty ? hdUrl : videoUrl,
+            'audioLink': '',
+            'title': titleMatch?.group(1) ?? '',
+            'thumbnail': thumbMatch?.group(1) ?? '',
+          };
+        }
+      } catch (_) {}
+    }
     return null;
   }
 
@@ -4101,119 +4743,126 @@ class DownloadService {
     AppState().updateActiveTask(task);
     onTaskUpdate?.call(task);
 
+    final referers = {
+      'youtube': 'https://www.youtube.com/',
+      'instagram': 'https://www.instagram.com/',
+      'tiktok': 'https://www.tiktok.com/',
+      'facebook': 'https://www.facebook.com/',
+      'twitter': 'https://x.com/',
+      'reddit': 'https://www.reddit.com/',
+      'vimeo': 'https://vimeo.com/',
+      'pinterest': 'https://www.pinterest.com/',
+    };
+
     HttpClient? client;
     IOSink? sink;
-    try {
-      final referers = {
-        'youtube': 'https://www.youtube.com/',
-        'instagram': 'https://www.instagram.com/',
-        'tiktok': 'https://www.tiktok.com/',
-        'facebook': 'https://www.facebook.com/',
-        'twitter': 'https://x.com/',
-      };
 
-      client = HttpClient();
-      client.connectionTimeout = const Duration(seconds: 25);
-      client.badCertificateCallback = (_, __, ___) => true;
+    for (int attempt = 0; attempt < 2; attempt++) {
+      try {
+        client = HttpClient();
+        client.connectionTimeout = const Duration(seconds: 25);
+        client.badCertificateCallback = (_, __, ___) => true;
 
-      final req = await client.getUrl(Uri.parse(targetUrl));
-      req.followRedirects = true;
-      req.maxRedirects = 8;
-      req.headers.set('User-Agent',
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36');
-      req.headers.set('Accept', '*/*');
-      req.headers.set('Connection', 'keep-alive');
-      if (referers.containsKey(entry.platform)) {
-        req.headers.set('Referer', referers[entry.platform]!);
-      }
+        final req = await client.getUrl(Uri.parse(targetUrl));
+        req.followRedirects = true;
+        req.maxRedirects = 8;
+        req.headers.set('User-Agent', _pickUserAgent(attempt));
+        req.headers.set('Accept', '*/*');
+        req.headers.set('Connection', 'keep-alive');
+        if (referers.containsKey(entry.platform)) {
+          req.headers.set('Referer', referers[entry.platform]!);
+        }
 
-      final res = await req.close();
-      if (res.statusCode != 200 && res.statusCode != 206) {
-        task.status = 'failed';
-        AppState().removeActiveTask(entry.id);
-        client.close();
-        return null;
-      }
-
-      final cleanName = entry.title
-          .replaceAll(RegExp(r'[^\w\u0600-\u06FF\s\-]'), '')
-          .trim()
-          .replaceAll(RegExp(r'\s+'), '_');
-      final stamp =
-          DateTime.now().millisecondsSinceEpoch.toString().substring(8);
-      final safeBase = cleanName.isEmpty
-          ? 'DOViD_${entry.platform}_$stamp'
-          : '${cleanName.length > 42 ? cleanName.substring(0, 42) : cleanName}_$stamp';
-      final ext = isAudio ? 'mp3' : 'mp4';
-
-      final targetDir = await _resolveWritableDirectory();
-      final filePath = '${targetDir.path}/$safeBase.$ext';
-      final file = File(filePath);
-      sink = file.openWrite();
-
-      final totalBytes = res.contentLength;
-      task.totalBytes = totalBytes > 0 ? totalBytes : 0;
-      int received = 0;
-      final sw = Stopwatch()..start();
-      int lastTickMs = 0;
-
-      await for (final chunk in res) {
-        if (task.isCanceled) {
-          await sink.close();
-          if (await file.exists()) await file.delete();
+        final res = await req.close();
+        if (res.statusCode != 200 && res.statusCode != 206) {
           client.close();
+          if (attempt == 0) continue;
+          task.status = 'failed';
           AppState().removeActiveTask(entry.id);
           return null;
         }
 
-        sink.add(chunk);
-        received += chunk.length;
-        task.receivedBytes = received;
+        final cleanName = entry.title
+            .replaceAll(RegExp(r'[^\w\u0600-\u06FF\s\-]'), '')
+            .trim()
+            .replaceAll(RegExp(r'\s+'), '_');
+        final stamp =
+            DateTime.now().millisecondsSinceEpoch.toString().substring(8);
+        final safeBase = cleanName.isEmpty
+            ? 'DOViD_${entry.platform}_$stamp'
+            : '${cleanName.length > 42 ? cleanName.substring(0, 42) : cleanName}_$stamp';
+        final ext = isAudio ? 'mp3' : 'mp4';
 
-        if (totalBytes > 0) {
-          task.progress = (received / totalBytes).clamp(0.0, 1.0);
-        } else {
-          task.progress =
-              (1.0 - (1.0 / (1.0 + received / (1024 * 1024 * 4))))
-                  .clamp(0.05, 0.95);
-        }
+        final targetDir = await _resolveWritableDirectory();
+        final filePath = '${targetDir.path}/$safeBase.$ext';
+        final file = File(filePath);
+        sink = file.openWrite();
 
-        final nowMs = sw.elapsedMilliseconds;
-        if (nowMs - lastTickMs >= 180) {
-          lastTickMs = nowMs;
-          final elapsedSec = nowMs / 1000.0;
-          if (elapsedSec > 0) {
-            task.speedKBps = (received / 1024.0) / elapsedSec;
+        final totalBytes = res.contentLength;
+        task.totalBytes = totalBytes > 0 ? totalBytes : 0;
+        int received = 0;
+        final sw = Stopwatch()..start();
+        int lastTickMs = 0;
+
+        await for (final chunk in res) {
+          if (task.isCanceled) {
+            await sink.close();
+            if (await file.exists()) await file.delete();
+            client.close();
+            AppState().removeActiveTask(entry.id);
+            return null;
           }
-          AppState().updateActiveTask(task);
-          onTaskUpdate?.call(task);
+
+          sink.add(chunk);
+          received += chunk.length;
+          task.receivedBytes = received;
+
+          if (totalBytes > 0) {
+            task.progress = (received / totalBytes).clamp(0.0, 1.0);
+          } else {
+            task.progress =
+                (1.0 - (1.0 / (1.0 + received / (1024 * 1024 * 4))))
+                    .clamp(0.05, 0.95);
+          }
+
+          final nowMs = sw.elapsedMilliseconds;
+          if (nowMs - lastTickMs >= 180) {
+            lastTickMs = nowMs;
+            final elapsedSec = nowMs / 1000.0;
+            if (elapsedSec > 0) {
+              task.speedKBps = (received / 1024.0) / elapsedSec;
+            }
+            AppState().updateActiveTask(task);
+            onTaskUpdate?.call(task);
+          }
         }
+
+        await sink.flush();
+        await sink.close();
+        client.close();
+
+        task.progress = 1.0;
+        task.status = 'completed';
+        final finalSize = formatBytes(received);
+        await AppState().updateDownload(
+          entry,
+          localPath: filePath,
+          fileSizeText: finalSize,
+        );
+        AppState().removeActiveTask(entry.id);
+        onTaskUpdate?.call(task);
+        return filePath;
+      } catch (_) {
+        try {
+          await sink?.close();
+        } catch (_) {}
+        client?.close();
       }
-
-      await sink.flush();
-      await sink.close();
-      client.close();
-
-      task.progress = 1.0;
-      task.status = 'completed';
-      final finalSize = formatBytes(received);
-      await AppState().updateDownload(
-        entry,
-        localPath: filePath,
-        fileSizeText: finalSize,
-      );
-      AppState().removeActiveTask(entry.id);
-      onTaskUpdate?.call(task);
-      return filePath;
-    } catch (_) {
-      try {
-        await sink?.close();
-      } catch (_) {}
-      client?.close();
-      task.status = 'failed';
-      AppState().removeActiveTask(entry.id);
-      return null;
     }
+
+    task.status = 'failed';
+    AppState().removeActiveTask(entry.id);
+    return null;
   }
 }
 
@@ -5064,21 +5713,6 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      isRegister ? 'إنشاء حساب جديد' : 'تسجيل الدخول الآمن',
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      '$kAppName $kAppVersion • نظام محمي بتشفير SQLite ودرع Anti-VPN',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 11, color: AppColors.textMuted),
-                    ),
                     const SizedBox(height: 22),
                     if (error != null) _ErrorBanner(message: error!),
                     _AuthField(
@@ -5520,7 +6154,7 @@ class _TopSecurityStatusHeader extends StatelessWidget {
                 : (s.currentUser?.username ?? '');
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
       decoration: const BoxDecoration(
         color: AppColors.surface,
         border: Border(bottom: BorderSide(color: AppColors.border)),
@@ -5528,8 +6162,8 @@ class _TopSecurityStatusHeader extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 32,
-            height: 32,
+            width: 34,
+            height: 34,
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [s.accentColor, AppColors.secondary],
@@ -5541,7 +6175,7 @@ class _TopSecurityStatusHeader extends StatelessWidget {
                 'DV',
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
-                  fontSize: 13,
+                  fontSize: 13.5,
                   color: Colors.white,
                 ),
               ),
@@ -5552,72 +6186,21 @@ class _TopSecurityStatusHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    const Text(
-                      kAppName,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 14.5,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 1.5),
-                      decoration: BoxDecoration(
-                        color: AppColors.success.withOpacity(0.14),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.verified_user,
-                              size: 10, color: AppColors.success),
-                          SizedBox(width: 3),
-                          Text(
-                            'VPN Shield',
-                            style: TextStyle(
-                              fontSize: 8.5,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.success,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                Text(
-                  userLabel,
-                  style: const TextStyle(
-                    fontSize: 10.5,
-                    color: AppColors.textMuted,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceLight,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.storage_rounded, size: 12, color: AppColors.guest),
-                SizedBox(width: 4),
-                Text(
-                  'SQLite WAL',
+                const Text(
+                  kAppName,
                   style: TextStyle(
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.guest,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 15,
                   ),
                 ),
+                if (userLabel.isNotEmpty)
+                  Text(
+                    userLabel,
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
               ],
             ),
           ),
@@ -6531,27 +7114,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
-                            const SizedBox(width: 5),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 5, vertical: 1),
-                              decoration: BoxDecoration(
-                                color: active
-                                    ? Colors.black26
-                                    : AppColors.surfaceLighter,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                q.badge,
-                                style: TextStyle(
-                                  fontSize: 8.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: active
-                                      ? Colors.white
-                                      : AppColors.textMuted,
-                                ),
-                              ),
-                            ),
+
                           ],
                         ),
                       ),
@@ -6677,50 +7240,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
         const SizedBox(height: 14),
         Tilt3DCard(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
           borderRadius: 20,
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.view_in_ar_rounded, color: accent, size: 19),
-                      const SizedBox(width: 7),
-                      const Text(
-                        'المنصات العالمية المدعومة بشعارات 3D المجسمة',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w900, fontSize: 13),
-                      ),
-                    ],
-                  ),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: accent.withOpacity(0.14),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: accent.withOpacity(0.35)),
-                    ),
-                    child: Text(
-                      '10 منصات 3D',
-                      style: TextStyle(
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w800,
-                        color: accent,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'اضغط على أي شعار ثلاثي الأبعاد لمعاينة قدرات المنصة أو لصق الرابط المباشر',
-                style: TextStyle(fontSize: 10.5, color: AppColors.textMuted),
-              ),
-              const SizedBox(height: 14),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: List.generate(5, (i) {
@@ -6732,7 +7255,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       size: 48,
                       phaseIndex: i,
                       showLabel: true,
-                      showSubBadge: true,
+                      showSubBadge: false,
                       onTap: () => _showPlatform3DDetailsSheet(context, p),
                     ),
                   );
@@ -6750,7 +7273,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       size: 48,
                       phaseIndex: i + 5,
                       showLabel: true,
-                      showSubBadge: true,
+                      showSubBadge: false,
                       onTap: () => _showPlatform3DDetailsSheet(context, p),
                     ),
                   );
@@ -7900,7 +8423,7 @@ class _SmartToolsScreenState extends State<SmartToolsScreen> {
 
   void _extractUrlsFromMessyText() {
     final raw = rawTextCtrl.text;
-    final regex = RegExp(r"""https?://[^\s"'<>]+""", caseSensitive: false);
+    final regex = RegExp(r'https?:\/\/[^\s"'<>]+', caseSensitive: false);
     final matches = regex
         .allMatches(raw)
         .map((m) => m.group(0)!.trim())
@@ -8856,9 +9379,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const Text(kDevName,
                         style: TextStyle(
                             fontSize: 16, fontWeight: FontWeight.w900)),
-                    Text('مطور ومؤسس النظام • $kAppVersion',
+                    Text('مطور ومؤسس النظام',
                         style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 11.5,
                             color: s.accentColor,
                             fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),

@@ -21,7 +21,7 @@ session_start();
 define('DEV_NAME', 'YOSSEF JOO');
 define('DEV_WHATSAPP', '01029892573');
 define('APP_NAME', 'DOViD');
-define('APP_VERSION', '5.0 Pro');
+define('APP_VERSION', '9.0 Ultra 3D Edition');
 define('API_ENDPOINT', 'https://zecora0.serv00.net/download/download.php');
 define('API_PRICE', '100'); // سعر الاشتراك الشهري
 define('ADMIN_EMAIL', 'guhfyuggu7@gmail.com');

@@ -1,7 +1,7 @@
 name: dovid
 description: DOViD - Smart Video Downloader System
 publish_to: 'none'
-version: 4.1.0+1
+version: 9.0.0+9
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

@@ -16,7 +16,7 @@ import 'package:collection/collection.dart';
 const String kDevName = 'YOSSEF JOO';
 const String kDevWhatsapp = '01029892573';
 const String kAppName = 'DOViD';
-const String kAppVersion = 'v8.0 Enterprise Ultra';
+const String kAppVersion = 'v9.0 Ultra 3D Edition';
 const String kApiEndpoint = 'https://zecora0.serv00.net/download/download.php';
 const String kApiPrice = '100';
 const String kAdminEmail = 'guhfyuggu7@gmail.com';
@@ -1255,10 +1255,16 @@ class AppState extends ChangeNotifier {
   bool isAppPinUnlockedSession = false;
   bool isVaultUnlockedSession = false;
 
-  // Appearance & Typography Settings
+  // Appearance, 3D Graphics & Typography Settings
   Color accentColor = AppColors.primary;
   String fontFamily = 'Cairo';
   double fontScale = 1.0;
+  bool enable3DEffects = true;
+  bool highGraphicsEnabled = true;
+  String studioSortBy = 'newest';
+  String historyStatusFilter = 'all';
+  int? pendingTabSwitch;
+  String pendingBatchUrls = '';
 
   // Smart Download & Quota Settings
   String defaultQuality = 'auto';
@@ -1487,6 +1493,9 @@ class AppState extends ChangeNotifier {
     fontScale =
         double.tryParse((db.getConfig('font_scale') ?? '1.0').toString()) ??
             1.0;
+    enable3DEffects = db.getConfig('enable_3d_effects') != false;
+    highGraphicsEnabled = db.getConfig('high_graphics_enabled') != false;
+    studioSortBy = (db.getConfig('studio_sort_by') ?? 'newest').toString();
 
     defaultQuality = (db.getConfig('default_quality') ??
             _prefs?.getString('default_quality') ??
@@ -1566,6 +1575,9 @@ class AppState extends ChangeNotifier {
     Color? newColor,
     String? newFontFamily,
     double? newFontScale,
+    bool? newEnable3DEffects,
+    bool? newHighGraphics,
+    String? newStudioSortBy,
     String? newQuality,
     bool? newAutoSave,
     bool? newAutoDetectClipboard,
@@ -1605,6 +1617,18 @@ class AppState extends ChangeNotifier {
     if (newFontScale != null) {
       fontScale = newFontScale;
       db.setConfig('font_scale', newFontScale);
+    }
+    if (newEnable3DEffects != null) {
+      enable3DEffects = newEnable3DEffects;
+      db.setConfig('enable_3d_effects', newEnable3DEffects);
+    }
+    if (newHighGraphics != null) {
+      highGraphicsEnabled = newHighGraphics;
+      db.setConfig('high_graphics_enabled', newHighGraphics);
+    }
+    if (newStudioSortBy != null) {
+      studioSortBy = newStudioSortBy;
+      db.setConfig('studio_sort_by', newStudioSortBy);
     }
     if (newQuality != null) {
       defaultQuality = newQuality;
@@ -1735,6 +1759,23 @@ class AppState extends ChangeNotifier {
       db.setConfig('custom_folders', customFolders);
       notifyListeners();
     }
+  }
+
+  void sendLinksToBatchDownloader(List<String> urls) {
+    if (urls.isEmpty) return;
+    pendingBatchUrls = urls.join('\n');
+    pendingTabSwitch = 0;
+    notifyListeners();
+  }
+
+  void consumePendingTabSwitch() {
+    pendingTabSwitch = null;
+  }
+
+  String consumePendingBatchUrls() {
+    final val = pendingBatchUrls;
+    pendingBatchUrls = '';
+    return val;
   }
 
   Future<void> _saveUsers() async {
@@ -2456,6 +2497,1027 @@ String formatDurationSeconds(int seconds) {
     return '$h:${remM.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
   return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+}
+
+// ============================================================================
+// CONST-SAFE QUALITY OPTION & 3D PLATFORM SPECIFICATION MODELS
+// ============================================================================
+class QualityOption {
+  final String key;
+  final String label;
+  final String badge;
+  final IconData icon;
+
+  const QualityOption({
+    required this.key,
+    required this.label,
+    required this.badge,
+    required this.icon,
+  });
+}
+
+class PlatformSpec {
+  final String id;
+  final String name;
+  final String arabicDesc;
+  final String badgeTag;
+  final Color topColor;
+  final Color bottomColor;
+  final Color depthColor;
+  final Color accentGlow;
+  final IconData fallbackIcon;
+
+  const PlatformSpec({
+    required this.id,
+    required this.name,
+    required this.arabicDesc,
+    required this.badgeTag,
+    required this.topColor,
+    required this.bottomColor,
+    required this.depthColor,
+    required this.accentGlow,
+    required this.fallbackIcon,
+  });
+}
+
+const List<PlatformSpec> kSupportedPlatforms3D = [
+  PlatformSpec(
+    id: 'youtube',
+    name: 'YouTube',
+    arabicDesc: 'فيديوهات وشورتس حتى 4K UHD وملفات MP3 نقية',
+    badgeTag: '4K / MP3',
+    topColor: Color(0xFFFF2A2A),
+    bottomColor: Color(0xFFB30000),
+    depthColor: Color(0xFF6B0000),
+    accentGlow: Color(0xFFFF3B3B),
+    fallbackIcon: Icons.play_circle_fill,
+  ),
+  PlatformSpec(
+    id: 'tiktok',
+    name: 'TikTok',
+    arabicDesc: 'تحميل بدون علامة مائية بجودة الأصل Full HD',
+    badgeTag: 'بدون علامة',
+    topColor: Color(0xFF1E2430),
+    bottomColor: Color(0xFF0B0E14),
+    depthColor: Color(0xFF00A8B5),
+    accentGlow: Color(0xFF25F4EE),
+    fallbackIcon: Icons.music_note,
+  ),
+  PlatformSpec(
+    id: 'instagram',
+    name: 'Instagram',
+    arabicDesc: 'ريلز، ستوري، ومقاطع IGTV بجودة كاملة',
+    badgeTag: 'Reels HD',
+    topColor: Color(0xFFF58529),
+    bottomColor: Color(0xFFDD2A7B),
+    depthColor: Color(0xFF515BD4),
+    accentGlow: Color(0xFFE1306C),
+    fallbackIcon: Icons.camera_alt,
+  ),
+  PlatformSpec(
+    id: 'facebook',
+    name: 'Facebook',
+    arabicDesc: 'فيديوهات الصفحات والريلز والمقاطع العامة والخاصة',
+    badgeTag: 'FHD 1080p',
+    topColor: Color(0xFF2D88FF),
+    bottomColor: Color(0xFF0E52B5),
+    depthColor: Color(0xFF072E6B),
+    accentGlow: Color(0xFF1877F2),
+    fallbackIcon: Icons.facebook,
+  ),
+  PlatformSpec(
+    id: 'twitter',
+    name: 'X / Twitter',
+    arabicDesc: 'مقاطع التغريدات والمساحات والصور المتحركة GIF',
+    badgeTag: 'تغريدات HD',
+    topColor: Color(0xFF2C3440),
+    bottomColor: Color(0xFF10141A),
+    depthColor: Color(0xFF1DA1F2),
+    accentGlow: Color(0xFF38BDF8),
+    fallbackIcon: Icons.alternate_email,
+  ),
+  PlatformSpec(
+    id: 'snapchat',
+    name: 'Snapchat',
+    arabicDesc: 'منصة الأضواء Spotlight والقصص العامة بدقة عالية',
+    badgeTag: 'Spotlight',
+    topColor: Color(0xFFFFEA00),
+    bottomColor: Color(0xFFD4A500),
+    depthColor: Color(0xFF8A6800),
+    accentGlow: Color(0xFFFFD600),
+    fallbackIcon: Icons.bolt,
+  ),
+  PlatformSpec(
+    id: 'pinterest',
+    name: 'Pinterest',
+    arabicDesc: 'فيديوهات الإلهام والتصاميم والقصص المصورة',
+    badgeTag: 'Pin Video',
+    topColor: Color(0xFFFF1E3A),
+    bottomColor: Color(0xFFA80018),
+    depthColor: Color(0xFF63000D),
+    accentGlow: Color(0xFFE60023),
+    fallbackIcon: Icons.push_pin,
+  ),
+  PlatformSpec(
+    id: 'vimeo',
+    name: 'Vimeo',
+    arabicDesc: 'الأعمال السينمائية والفيديوهات الاحترافية 4K',
+    badgeTag: 'Cinema 4K',
+    topColor: Color(0xFF29C5F6),
+    bottomColor: Color(0xFF007EA7),
+    depthColor: Color(0xFF004B66),
+    accentGlow: Color(0xFF1AB7EA),
+    fallbackIcon: Icons.videocam,
+  ),
+  PlatformSpec(
+    id: 'dailymotion',
+    name: 'Dailymotion',
+    arabicDesc: 'القنوات العالمية والبرامج الوثائقية كاملة',
+    badgeTag: 'HD Stream',
+    topColor: Color(0xFF00B4D8),
+    bottomColor: Color(0xFF005F8C),
+    depthColor: Color(0xFF003752),
+    accentGlow: Color(0xFF00AAFF),
+    fallbackIcon: Icons.play_arrow,
+  ),
+  PlatformSpec(
+    id: 'reddit',
+    name: 'Reddit',
+    arabicDesc: 'مقاطع المجتمعات مع دمج الصوت الأوتوماتيكي',
+    badgeTag: 'Audio+Video',
+    topColor: Color(0xFFFF5722),
+    bottomColor: Color(0xFFC43000),
+    depthColor: Color(0xFF7A1C00),
+    accentGlow: Color(0xFFFF4500),
+    fallbackIcon: Icons.forum,
+  ),
+];
+
+PlatformSpec getPlatformSpec(String platformId) {
+  final clean = platformId.toLowerCase().trim();
+  for (final p in kSupportedPlatforms3D) {
+    if (p.id == clean) return p;
+  }
+  return const PlatformSpec(
+    id: 'unknown',
+    name: 'DOViD Media',
+    arabicDesc: 'فيديو متعدد المنصات مدعوم بالمعالجة الذكية',
+    badgeTag: 'Smart HD',
+    topColor: Color(0xFFF97316),
+    bottomColor: Color(0xFFEA580C),
+    depthColor: Color(0xFF9A3412),
+    accentGlow: Color(0xFFF97316),
+    fallbackIcon: Icons.video_file,
+  );
+}
+
+// ============================================================================
+// 3D VOLUMETRIC PLATFORM LOGOS ENGINE (Custom Sculpted 3D Vector Badges)
+// ============================================================================
+class Platform3DLogoPainter extends CustomPainter {
+  final String platformId;
+  final bool active;
+  final bool enable3D;
+  final double shinePhase;
+
+  Platform3DLogoPainter({
+    required this.platformId,
+    this.active = false,
+    this.enable3D = true,
+    this.shinePhase = 0.0,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final spec = getPlatformSpec(platformId);
+    final w = size.width;
+    final h = size.height;
+    final radius = Radius.circular(w * 0.28);
+
+    // 1. Soft Ambient Ground Shadow
+    if (enable3D) {
+      final shadowPaint = Paint()
+        ..color = spec.accentGlow.withOpacity(active ? 0.36 : 0.18)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(w * 0.08, h * 0.14, w * 0.84, h * 0.84),
+          radius,
+        ),
+        shadowPaint,
+      );
+
+      // 2. 3D Extruded Bottom/Right Depth Block (Volumetric Thickness)
+      final depthRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.06, h * 0.11, w * 0.88, h * 0.86),
+        radius,
+      );
+      final depthPaint = Paint()
+        ..shader = LinearGradient(
+          colors: [
+            spec.depthColor,
+            Color.lerp(spec.depthColor, Colors.black, 0.45)!,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ).createShader(depthRect.outerRect);
+      canvas.drawRRect(depthRect, depthPaint);
+    }
+
+    // 3. Main 3D Sculpted Cushion Face
+    final faceRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        w * 0.05,
+        enable3D ? h * 0.04 : h * 0.06,
+        w * 0.88,
+        h * 0.85,
+      ),
+      radius,
+    );
+
+    final List<Color> faceGradientColors = platformId == 'instagram'
+        ? const [
+            Color(0xFFFEDA77),
+            Color(0xFFF58529),
+            Color(0xFFDD2A7B),
+            Color(0xFF8134AF),
+          ]
+        : [
+            spec.topColor,
+            spec.bottomColor,
+          ];
+
+    final facePaint = Paint()
+      ..shader = LinearGradient(
+        colors: faceGradientColors,
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ).createShader(faceRect.outerRect);
+    canvas.drawRRect(faceRect, facePaint);
+
+    // 4. Inner 3D Bevel Rim Border
+    final rimPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = active ? 1.6 : 1.1
+      ..shader = LinearGradient(
+        colors: [
+          Colors.white.withOpacity(active ? 0.72 : 0.42),
+          Colors.white.withOpacity(0.06),
+          Colors.black.withOpacity(0.35),
+        ],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ).createShader(faceRect.outerRect);
+    canvas.drawRRect(faceRect.deflate(0.6), rimPaint);
+
+    // 5. Specular Top-Left Glass Highlight Dome
+    if (enable3D) {
+      final glossRect = RRect.fromRectAndCorners(
+        Rect.fromLTWH(
+          faceRect.left + w * 0.06,
+          faceRect.top + h * 0.04,
+          faceRect.width - w * 0.12,
+          faceRect.height * 0.42,
+        ),
+        topLeft: Radius.circular(w * 0.22),
+        topRight: Radius.circular(w * 0.22),
+        bottomLeft: Radius.circular(w * 0.08),
+        bottomRight: Radius.circular(w * 0.08),
+      );
+      final glossPaint = Paint()
+        ..shader = LinearGradient(
+          colors: [
+            Colors.white.withOpacity(0.32 + 0.08 * sin(shinePhase)),
+            Colors.white.withOpacity(0.02),
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ).createShader(glossRect.outerRect);
+      canvas.drawRRect(glossRect, glossPaint);
+    }
+
+    // 6. Sculpted 3D Platform Emblem inside the Cushion
+    final center = Offset(faceRect.center.dx, faceRect.center.dy);
+    final unit = faceRect.width;
+    _drawPlatformEmblem3D(canvas, center, unit, platformId);
+  }
+
+  void _drawPlatformEmblem3D(
+      Canvas canvas, Offset c, double u, String platform) {
+    final shadowPaint = Paint()
+      ..color = Colors.black.withOpacity(0.34)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5);
+
+    switch (platform) {
+      case 'youtube':
+        // 3D Inner Play Screen + Extruded Play Triangle
+        final pill = RRect.fromRectAndRadius(
+          Rect.fromCenter(center: c, width: u * 0.62, height: u * 0.44),
+          Radius.circular(u * 0.12),
+        );
+        canvas.drawRRect(pill.shift(Offset(0, u * 0.035)), shadowPaint);
+        canvas.drawRRect(
+          pill,
+          Paint()
+            ..shader = const LinearGradient(
+              colors: [Colors.white, Color(0xFFE2E8F0)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ).createShader(pill.outerRect),
+        );
+        final tri = Path()
+          ..moveTo(c.dx - u * 0.08, c.dy - u * 0.11)
+          ..lineTo(c.dx + u * 0.13, c.dy)
+          ..lineTo(c.dx - u * 0.08, c.dy + u * 0.11)
+          ..close();
+        canvas.drawPath(
+          tri,
+          Paint()..color = const Color(0xFFD90429),
+        );
+        break;
+
+      case 'tiktok':
+        // 3D Dual-Offset Cyan & Crimson Musical Note + White Core
+        void drawTikTokNote(Offset offset, Color color) {
+          final p = Paint()
+            ..color = color
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = u * 0.105
+            ..strokeCap = StrokeCap.round
+            ..strokeJoin = StrokeJoin.round;
+          final path = Path()
+            ..moveTo(c.dx + offset.dx + u * 0.05, c.dy + offset.dy - u * 0.22)
+            ..lineTo(c.dx + offset.dx + u * 0.05, c.dy + offset.dy + u * 0.10)
+            ..arcToPoint(
+              Offset(c.dx + offset.dx - u * 0.17, c.dy + offset.dy + u * 0.10),
+              radius: Radius.circular(u * 0.115),
+              clockwise: true,
+            )
+            ..arcToPoint(
+              Offset(c.dx + offset.dx - u * 0.03, c.dy + offset.dy - u * 0.01),
+              radius: Radius.circular(u * 0.115),
+              clockwise: true,
+            );
+          canvas.drawPath(path, p);
+          final wave = Path()
+            ..moveTo(c.dx + offset.dx + u * 0.05, c.dy + offset.dy - u * 0.20)
+            ..quadraticBezierTo(
+              c.dx + offset.dx + u * 0.14,
+              c.dy + offset.dy - u * 0.09,
+              c.dx + offset.dx + u * 0.22,
+              c.dy + offset.dy - u * 0.08,
+            );
+          canvas.drawPath(wave, p);
+        }
+        drawTikTokNote(Offset(-u * 0.03, -u * 0.025), const Color(0xFF25F4EE));
+        drawTikTokNote(Offset(u * 0.03, u * 0.025), const Color(0xFFFE2C55));
+        drawTikTokNote(Offset.zero, Colors.white);
+        break;
+
+      case 'instagram':
+        // 3D Sculpted Camera Frame + Glass Lens Ring + Flash Dot
+        final camRect = RRect.fromRectAndRadius(
+          Rect.fromCenter(center: c, width: u * 0.56, height: u * 0.56),
+          Radius.circular(u * 0.16),
+        );
+        final strokeP = Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = u * 0.075;
+        canvas.drawRRect(camRect.shift(Offset(0, u * 0.03)), shadowPaint);
+        canvas.drawRRect(camRect, strokeP);
+        canvas.drawCircle(c, u * 0.135, strokeP);
+        canvas.drawCircle(
+          Offset(c.dx + u * 0.165, c.dy - u * 0.165),
+          u * 0.04,
+          Paint()..color = Colors.white,
+        );
+        break;
+
+      case 'facebook':
+        // 3D Sculpted 'f' Monogram
+        final fPath = Path()
+          ..moveTo(c.dx + u * 0.11, c.dy - u * 0.25)
+          ..lineTo(c.dx + u * 0.02, c.dy - u * 0.25)
+          ..quadraticBezierTo(
+              c.dx - u * 0.08, c.dy - u * 0.25, c.dx - u * 0.08, c.dy - u * 0.13)
+          ..lineTo(c.dx - u * 0.08, c.dy + u * 0.26)
+          ..moveTo(c.dx - u * 0.18, c.dy - u * 0.03)
+          ..lineTo(c.dx + u * 0.10, c.dy - u * 0.03);
+        final fShadow = Paint()
+          ..color = Colors.black.withOpacity(0.32)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = u * 0.12
+          ..strokeCap = StrokeCap.round;
+        final fPaint = Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = u * 0.12
+          ..strokeCap = StrokeCap.round;
+        canvas.drawPath(fPath.shift(Offset(0, u * 0.03)), fShadow);
+        canvas.drawPath(fPath, fPaint);
+        break;
+
+      case 'twitter':
+        // 3D Sculpted X Crossed Metallic Beams
+        final xPaint1 = Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = u * 0.105
+          ..strokeCap = StrokeCap.round;
+        final xPaint2 = Paint()
+          ..color = const Color(0xFF94A3B8)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = u * 0.075
+          ..strokeCap = StrokeCap.round;
+        canvas.drawLine(
+          Offset(c.dx - u * 0.19, c.dy - u * 0.19 + u * 0.03),
+          Offset(c.dx + u * 0.19, c.dy + u * 0.19 + u * 0.03),
+          shadowPaint,
+        );
+        canvas.drawLine(
+          Offset(c.dx + u * 0.19, c.dy - u * 0.19),
+          Offset(c.dx - u * 0.19, c.dy + u * 0.19),
+          xPaint2,
+        );
+        canvas.drawLine(
+          Offset(c.dx - u * 0.19, c.dy - u * 0.19),
+          Offset(c.dx + u * 0.19, c.dy + u * 0.19),
+          xPaint1,
+        );
+        break;
+
+      case 'snapchat':
+        // 3D Sculpted Ghost Silhouette with Dark Rim
+        final ghost = Path()
+          ..moveTo(c.dx, c.dy - u * 0.24)
+          ..cubicTo(
+            c.dx + u * 0.18,
+            c.dy - u * 0.24,
+            c.dx + u * 0.19,
+            c.dy - u * 0.04,
+            c.dx + u * 0.19,
+            c.dy + u * 0.05,
+          )
+          ..lineTo(c.dx + u * 0.25, c.dy + u * 0.16)
+          ..lineTo(c.dx + u * 0.12, c.dy + u * 0.21)
+          ..lineTo(c.dx, c.dy + u * 0.17)
+          ..lineTo(c.dx - u * 0.12, c.dy + u * 0.21)
+          ..lineTo(c.dx - u * 0.25, c.dy + u * 0.16)
+          ..lineTo(c.dx - u * 0.19, c.dy + u * 0.05)
+          ..cubicTo(
+            c.dx - u * 0.19,
+            c.dy - u * 0.04,
+            c.dx - u * 0.18,
+            c.dy - u * 0.24,
+            c.dx,
+            c.dy - u * 0.24,
+          )
+          ..close();
+        canvas.drawPath(ghost.shift(Offset(0, u * 0.03)), shadowPaint);
+        canvas.drawPath(ghost, Paint()..color = Colors.white);
+        canvas.drawPath(
+          ghost,
+          Paint()
+            ..color = const Color(0xFF1E293B)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = u * 0.045
+            ..strokeJoin = StrokeJoin.round,
+        );
+        break;
+
+      case 'pinterest':
+        // 3D Sculpted Pin 'P' Badge
+        canvas.drawCircle(
+            c.translate(0, u * 0.03), u * 0.25, shadowPaint);
+        canvas.drawCircle(c, u * 0.25, Paint()..color = Colors.white);
+        final pStroke = Paint()
+          ..color = const Color(0xFFE60023)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = u * 0.08
+          ..strokeCap = StrokeCap.round;
+        canvas.drawLine(
+          Offset(c.dx - u * 0.05, c.dy - u * 0.12),
+          Offset(c.dx - u * 0.08, c.dy + u * 0.16),
+          pStroke,
+        );
+        canvas.drawArc(
+          Rect.fromCenter(
+              center: Offset(c.dx + u * 0.01, c.dy - u * 0.04),
+              width: u * 0.18,
+              height: u * 0.16),
+          -pi / 2,
+          pi,
+          false,
+          pStroke,
+        );
+        break;
+
+      case 'vimeo':
+        // 3D Sculpted 'V' Ribbon
+        final vPath = Path()
+          ..moveTo(c.dx - u * 0.20, c.dy - u * 0.14)
+          ..lineTo(c.dx - u * 0.01, c.dy + u * 0.18)
+          ..lineTo(c.dx + u * 0.20, c.dy - u * 0.16);
+        final vPaint = Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = u * 0.12
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round;
+        canvas.drawPath(vPath.shift(Offset(0, u * 0.035)), shadowPaint);
+        canvas.drawPath(vPath, vPaint);
+        break;
+
+      case 'dailymotion':
+        // 3D Sculpted Geometric 'd' Emblem
+        final dRing = Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = u * 0.095
+          ..strokeCap = StrokeCap.round;
+        canvas.drawCircle(
+          Offset(c.dx - u * 0.03, c.dy + u * 0.05),
+          u * 0.14,
+          dRing,
+        );
+        canvas.drawLine(
+          Offset(c.dx + u * 0.11, c.dy - u * 0.22),
+          Offset(c.dx + u * 0.11, c.dy + u * 0.19),
+          dRing,
+        );
+        break;
+
+      case 'reddit':
+        // 3D Sculpted Robot Head + Antenna + Eyes
+        final headCenter = Offset(c.dx, c.dy + u * 0.05);
+        canvas.drawOval(
+          Rect.fromCenter(
+              center: headCenter.translate(0, u * 0.03),
+              width: u * 0.48,
+              height: u * 0.34),
+          shadowPaint,
+        );
+        canvas.drawOval(
+          Rect.fromCenter(center: headCenter, width: u * 0.48, height: u * 0.34),
+          Paint()..color = Colors.white,
+        );
+        // Eyes
+        final eyePaint = Paint()..color = const Color(0xFFFF4500);
+        canvas.drawCircle(
+            Offset(headCenter.dx - u * 0.10, headCenter.dy - u * 0.01),
+            u * 0.045,
+            eyePaint);
+        canvas.drawCircle(
+            Offset(headCenter.dx + u * 0.10, headCenter.dy - u * 0.01),
+            u * 0.045,
+            eyePaint);
+        // Antenna
+        final antPaint = Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = u * 0.045
+          ..strokeCap = StrokeCap.round;
+        final antPath = Path()
+          ..moveTo(headCenter.dx, headCenter.dy - u * 0.16)
+          ..lineTo(headCenter.dx + u * 0.08, headCenter.dy - u * 0.27)
+          ..lineTo(headCenter.dx + u * 0.17, headCenter.dy - u * 0.24);
+        canvas.drawPath(antPath, antPaint);
+        canvas.drawCircle(
+          Offset(headCenter.dx + u * 0.18, headCenter.dy - u * 0.24),
+          u * 0.04,
+          Paint()..color = Colors.white,
+        );
+        break;
+
+      default:
+        // DOViD 3D Play Cube Emblem
+        final tri = Path()
+          ..moveTo(c.dx - u * 0.10, c.dy - u * 0.15)
+          ..lineTo(c.dx + u * 0.16, c.dy)
+          ..lineTo(c.dx - u * 0.10, c.dy + u * 0.15)
+          ..close();
+        canvas.drawPath(tri.shift(Offset(0, u * 0.03)), shadowPaint);
+        canvas.drawPath(tri, Paint()..color = Colors.white);
+        break;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant Platform3DLogoPainter oldDelegate) {
+    return oldDelegate.platformId != platformId ||
+        oldDelegate.active != active ||
+        oldDelegate.enable3D != enable3D ||
+        (oldDelegate.shinePhase - shinePhase).abs() > 0.05;
+  }
+}
+
+class Platform3DBadge extends StatefulWidget {
+  final String platformId;
+  final bool active;
+  final double size;
+  final int phaseIndex;
+  final bool showLabel;
+  final bool showSubBadge;
+  final VoidCallback? onTap;
+
+  const Platform3DBadge({
+    super.key,
+    required this.platformId,
+    this.active = false,
+    this.size = 48,
+    this.phaseIndex = 0,
+    this.showLabel = true,
+    this.showSubBadge = false,
+    this.onTap,
+  });
+
+  @override
+  State<Platform3DBadge> createState() => _Platform3DBadgeState();
+}
+
+class _Platform3DBadgeState extends State<Platform3DBadge>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  bool _pressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: 2600 + (widget.phaseIndex % 5) * 240),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppState();
+    final spec = getPlatformSpec(widget.platformId);
+    final enable3D = s.enable3DEffects;
+    final highGfx = s.highGraphicsEnabled;
+
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onTap?.call();
+      },
+      onTapCancel: () => setState(() => _pressed = false),
+      child: AnimatedBuilder(
+        animation: _ctrl,
+        builder: (context, _) {
+          final wave = highGfx
+              ? sin((_ctrl.value * pi * 2) + widget.phaseIndex * 0.7)
+              : 0.0;
+          final dy = (enable3D && highGfx) ? wave * 2.4 : 0.0;
+          final tiltX = enable3D
+              ? (_pressed ? 0.18 : (widget.active ? -0.10 + wave * 0.05 : wave * 0.04))
+              : 0.0;
+          final tiltY = enable3D
+              ? (_pressed ? -0.14 : (widget.active ? 0.10 : wave * 0.04))
+              : 0.0;
+          final scale = _pressed ? 0.91 : (widget.active ? 1.08 : 1.0);
+
+          final matrix = Matrix4.identity();
+          if (enable3D) {
+            matrix.setEntry(3, 2, 0.0022);
+            matrix.translate(0.0, dy, 0.0);
+            matrix.rotateX(tiltX);
+            matrix.rotateY(tiltY);
+          }
+          matrix.scale(scale);
+
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Transform(
+                alignment: Alignment.center,
+                transform: matrix,
+                child: SizedBox(
+                  width: widget.size,
+                  height: widget.size,
+                  child: CustomPaint(
+                    painter: Platform3DLogoPainter(
+                      platformId: widget.platformId,
+                      active: widget.active,
+                      enable3D: enable3D,
+                      shinePhase: _ctrl.value * pi * 2,
+                    ),
+                  ),
+                ),
+              ),
+              if (widget.showLabel) ...[
+                const SizedBox(height: 5),
+                Text(
+                  spec.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 9.8,
+                    fontWeight:
+                        widget.active ? FontWeight.w900 : FontWeight.w700,
+                    color: widget.active ? Colors.white : AppColors.textMuted,
+                  ),
+                ),
+              ],
+              if (widget.showSubBadge) ...[
+                const SizedBox(height: 2),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: spec.accentGlow.withOpacity(widget.active ? 0.24 : 0.10),
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(
+                      color: spec.accentGlow.withOpacity(widget.active ? 0.65 : 0.24),
+                      width: 0.7,
+                    ),
+                  ),
+                  child: Text(
+                    spec.badgeTag,
+                    style: TextStyle(
+                      fontSize: 7.8,
+                      fontWeight: FontWeight.w800,
+                      color: widget.active ? Colors.white : spec.accentGlow,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// INTERACTIVE 3D PERSPECTIVE TILT CARD & LIVE AUDIO WAVEFORM VISUALIZER
+// ============================================================================
+class Tilt3DCard extends StatefulWidget {
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final EdgeInsetsGeometry? margin;
+  final Color? borderColor;
+  final double borderRadius;
+
+  const Tilt3DCard({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(16),
+    this.margin,
+    this.borderColor,
+    this.borderRadius = 20,
+  });
+
+  @override
+  State<Tilt3DCard> createState() => _Tilt3DCardState();
+}
+
+class _Tilt3DCardState extends State<Tilt3DCard> {
+  double _rx = 0.0;
+  double _ry = 0.0;
+  bool _hovering = false;
+
+  void _onPanUpdate(DragUpdateDetails d, Size size) {
+    if (!AppState().enable3DEffects) return;
+    final dx = (d.localPosition.dx - size.width / 2) / (size.width / 2);
+    final dy = (d.localPosition.dy - size.height / 2) / (size.height / 2);
+    setState(() {
+      _hovering = true;
+      _ry = (dx * 0.065).clamp(-0.08, 0.08);
+      _rx = (-dy * 0.065).clamp(-0.08, 0.08);
+    });
+  }
+
+  void _resetTilt() {
+    if (!_hovering && _rx == 0 && _ry == 0) return;
+    setState(() {
+      _hovering = false;
+      _rx = 0.0;
+      _ry = 0.0;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppState();
+    final enable3D = s.enable3DEffects;
+    final bColor = widget.borderColor ?? AppColors.borderStrong;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth.isFinite ? constraints.maxWidth : 340.0;
+        final matrix = Matrix4.identity();
+        if (enable3D && (_rx != 0 || _ry != 0)) {
+          matrix.setEntry(3, 2, 0.0012);
+          matrix.rotateX(_rx);
+          matrix.rotateY(_ry);
+        }
+
+        return GestureDetector(
+          onPanUpdate: (d) => _onPanUpdate(d, Size(w, 180)),
+          onPanEnd: (_) => _resetTilt(),
+          onPanCancel: _resetTilt,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            margin: widget.margin,
+            transformAlignment: Alignment.center,
+            transform: matrix,
+            padding: widget.padding,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  _hovering ? AppColors.surfaceLight : AppColors.surface,
+                  AppColors.surface,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(widget.borderRadius),
+              border: Border.all(
+                color: _hovering
+                    ? s.accentColor.withOpacity(0.55)
+                    : bColor,
+                width: _hovering ? 1.3 : 1.0,
+              ),
+              boxShadow: enable3D
+                  ? [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.38),
+                        blurRadius: 14,
+                        offset: const Offset(0, 7),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: widget.child,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class AnimatedEqualizerBars extends StatefulWidget {
+  final Color color;
+  final int barCount;
+  final double height;
+
+  const AnimatedEqualizerBars({
+    super.key,
+    required this.color,
+    this.barCount = 6,
+    this.height = 16,
+  });
+
+  @override
+  State<AnimatedEqualizerBars> createState() => _AnimatedEqualizerBarsState();
+}
+
+class _AnimatedEqualizerBarsState extends State<AnimatedEqualizerBars>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final active = AppState().highGraphicsEnabled;
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, _) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: List.generate(widget.barCount, (i) {
+            final t = active
+                ? (0.3 +
+                    0.7 *
+                        ((sin((_ctrl.value * pi * 2) + (i * 0.85)) + 1) / 2))
+                : 0.55;
+            return Container(
+              width: 3,
+              height: widget.height * t,
+              margin: const EdgeInsets.symmetric(horizontal: 1.3),
+              decoration: BoxDecoration(
+                color: widget.color,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            );
+          }),
+        );
+      },
+    );
+  }
+}
+
+class VisualQrMatrixPainter extends CustomPainter {
+  final String data;
+  final Color foregroundColor;
+
+  VisualQrMatrixPainter({
+    required this.data,
+    required this.foregroundColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const grid = 21;
+    final cell = size.width / grid;
+    final bgPaint = Paint()..color = const Color(0xFF0E131D);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(0, 0, size.width, size.height),
+        const Radius.circular(12),
+      ),
+      bgPaint,
+    );
+
+    final fgPaint = Paint()..color = foregroundColor;
+    final whitePaint = Paint()..color = Colors.white;
+
+    bool isFinderPattern(int r, int c) {
+      final topL = r < 7 && c < 7;
+      final topR = r < 7 && c >= grid - 7;
+      final botL = r >= grid - 7 && c < 7;
+      return topL || topR || botL;
+    }
+
+    void drawFinder(int startR, int startC) {
+      final outer = RRect.fromRectAndRadius(
+        Rect.fromLTWH(startC * cell, startR * cell, 7 * cell, 7 * cell),
+        Radius.circular(cell * 1.4),
+      );
+      final innerBg = RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+            (startC + 1) * cell, (startR + 1) * cell, 5 * cell, 5 * cell),
+        Radius.circular(cell),
+      );
+      final core = RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+            (startC + 2) * cell, (startR + 2) * cell, 3 * cell, 3 * cell),
+        Radius.circular(cell * 0.8),
+      );
+      canvas.drawRRect(outer, fgPaint);
+      canvas.drawRRect(innerBg, bgPaint);
+      canvas.drawRRect(core, whitePaint);
+    }
+
+    drawFinder(0, 0);
+    drawFinder(0, grid - 7);
+    drawFinder(grid - 7, 0);
+
+    final bytes = utf8.encode(data.isEmpty ? 'https://dovid.app' : data);
+    for (int r = 0; r < grid; r++) {
+      for (int c = 0; c < grid; c++) {
+        if (isFinderPattern(r, c)) continue;
+        final seed =
+            bytes[(r * grid + c) % bytes.length] ^ ((r * 31 + c * 17) & 0xFF);
+        if (seed % 2 == 0) {
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(
+              Rect.fromLTWH(
+                c * cell + cell * 0.1,
+                r * cell + cell * 0.1,
+                cell * 0.8,
+                cell * 0.8,
+              ),
+              Radius.circular(cell * 0.25),
+            ),
+            (r + c) % 3 == 0 ? fgPaint : whitePaint,
+          );
+        }
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant VisualQrMatrixPainter oldDelegate) {
+    return oldDelegate.data != data ||
+        oldDelegate.foregroundColor != foregroundColor;
+  }
 }
 
 // ============================================================================
@@ -4298,6 +5360,13 @@ class _MainScreenState extends State<MainScreen> {
             _NavItem(Icons.admin_panel_settings_rounded, 'المدير', admin: true),
         ];
 
+        if (s.pendingTabSwitch != null) {
+          final target = s.pendingTabSwitch!;
+          s.consumePendingTabSwitch();
+          if (target >= 0 && target < pages.length) {
+            _tab = target;
+          }
+        }
         if (_tab >= pages.length) _tab = 0;
 
         return Scaffold(
@@ -4312,7 +5381,19 @@ class _MainScreenState extends State<MainScreen> {
                     if (s.activeTasks.isNotEmpty) _ActiveDownloadsBanner(),
                     Expanded(
                       child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 220),
+                        duration: const Duration(milliseconds: 280),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        transitionBuilder: (child, anim) {
+                          return FadeTransition(
+                            opacity: anim,
+                            child: ScaleTransition(
+                              scale: Tween<double>(begin: 0.97, end: 1.0)
+                                  .animate(anim),
+                              child: child,
+                            ),
+                          );
+                        },
                         child: KeyedSubtree(
                           key: ValueKey<int>(_tab),
                           child: pages[_tab],
@@ -4566,12 +5647,7 @@ class _ActiveDownloadsBanner extends StatelessWidget {
         children: [
           Row(
             children: [
-              SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2, color: s.accentColor),
-              ),
+              AnimatedEqualizerBars(color: s.accentColor, barCount: 5, height: 15),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -4612,45 +5688,76 @@ class _ActiveDownloadsBanner extends StatelessWidget {
   }
 }
 
-class _SubtleAmbientBackground extends StatelessWidget {
+class _SubtleAmbientBackground extends StatefulWidget {
   const _SubtleAmbientBackground();
 
   @override
+  State<_SubtleAmbientBackground> createState() =>
+      _SubtleAmbientBackgroundState();
+}
+
+class _SubtleAmbientBackgroundState extends State<_SubtleAmbientBackground>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 10),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final accent = AppState().accentColor;
-    return Stack(
-      children: [
-        Container(color: AppColors.bg),
-        Positioned(
-          top: -160,
-          right: -120,
-          child: Container(
-            width: 380,
-            height: 380,
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                colors: [accent.withOpacity(0.06), Colors.transparent],
+    final s = AppState();
+    final accent = s.accentColor;
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, _) {
+        final shift = s.highGraphicsEnabled ? (_ctrl.value - 0.5) * 35.0 : 0.0;
+        return Stack(
+          children: [
+            Container(color: AppColors.bg),
+            Positioned(
+              top: -150 + shift,
+              right: -110 - shift * 0.6,
+              child: Container(
+                width: 390,
+                height: 390,
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    colors: [accent.withOpacity(0.075), Colors.transparent],
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-        Positioned(
-          bottom: -160,
-          left: -120,
-          child: Container(
-            width: 360,
-            height: 360,
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                colors: [
-                  AppColors.secondary.withOpacity(0.05),
-                  Colors.transparent
-                ],
+            Positioned(
+              bottom: -150 - shift,
+              left: -110 + shift * 0.6,
+              child: Container(
+                width: 370,
+                height: 370,
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    colors: [
+                      AppColors.secondary.withOpacity(0.065),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 }
@@ -4678,19 +5785,49 @@ class _HomeScreenState extends State<HomeScreen> {
   String? detectedClipboardLink;
   Timer? _debounce;
 
-  final qualities = const [
-    {'key': 'auto', 'label': 'تلقائي ذكي', 'icon': Icons.auto_awesome},
-    {'key': '4k', 'label': '4K فائق الدقة', 'icon': Icons.hd},
-    {'key': '1080', 'label': 'FHD 1080p', 'icon': Icons.tv},
-    {'key': '720', 'label': 'HD 720p', 'icon': Icons.phone_android},
-    {'key': 'audio', 'label': 'صوت MP3 نقي', 'icon': Icons.music_note},
+  final List<QualityOption> qualities = const [
+    QualityOption(
+      key: 'auto',
+      label: 'تلقائي ذكي',
+      badge: 'AI Auto',
+      icon: Icons.auto_awesome,
+    ),
+    QualityOption(
+      key: '4k',
+      label: '4K فائق الدقة',
+      badge: '2160p UHD',
+      icon: Icons.hd,
+    ),
+    QualityOption(
+      key: '1080',
+      label: 'FHD 1080p',
+      badge: '60 FPS',
+      icon: Icons.tv,
+    ),
+    QualityOption(
+      key: '720',
+      label: 'HD 720p',
+      badge: 'سريع',
+      icon: Icons.phone_android,
+    ),
+    QualityOption(
+      key: 'audio',
+      label: 'صوت MP3 نقي',
+      badge: '320kbps',
+      icon: Icons.music_note,
+    ),
   ];
 
   @override
   void initState() {
     super.initState();
-    quality = AppState().defaultQuality;
-    if (AppState().autoDetectClipboard) {
+    final s = AppState();
+    quality = s.defaultQuality;
+    final batchFromTools = s.consumePendingBatchUrls();
+    if (batchFromTools.isNotEmpty) {
+      batchMode = true;
+      urlCtrl.text = batchFromTools;
+    } else if (s.autoDetectClipboard) {
       _checkClipboardForLink();
     }
   }
@@ -4882,6 +6019,115 @@ class _HomeScreenState extends State<HomeScreen> {
       result = lastSuccess;
       loading = false;
     });
+  }
+
+  void _showPlatform3DDetailsSheet(BuildContext context, PlatformSpec spec) {
+    final s = AppState();
+    final count =
+        s.myDownloads.where((d) => d.platform == spec.id).length;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Platform3DBadge(
+                    platformId: spec.id,
+                    active: true,
+                    size: 56,
+                    showLabel: false,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              spec.name,
+                              style: const TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            _MiniTag(spec.badgeTag, spec.accentGlow),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          spec.arabicDesc,
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _TimerBox(value: '$count', label: 'تحميلاتك من المنصة'),
+                    const _TimerBox(value: '4K / FHD', label: 'أعلى دقة مدعومة'),
+                    const _TimerBox(value: 'MP3 320k', label: 'استخراج الصوت'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        Navigator.pop(ctx);
+                        await _pasteFromClipboard();
+                      },
+                      icon: const Icon(Icons.content_paste_rounded,
+                          size: 17, color: Colors.white),
+                      label: Text(
+                        'لصق رابط ${spec.name} والتحميل فوراً',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: s.accentColor,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _saveVideoFile(
@@ -5239,46 +6485,71 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const SizedBox(height: 12),
               SizedBox(
-                height: 38,
+                height: 40,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: qualities.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 8),
                   itemBuilder: (context, i) {
                     final q = qualities[i];
-                    final active = quality == q['key'];
+                    final active = quality == q.key;
                     return GestureDetector(
-                      onTap: () =>
-                          setState(() => quality = q['key'] as String),
+                      onTap: () => setState(() => quality = q.key),
                       child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
+                        duration: const Duration(milliseconds: 200),
                         padding: const EdgeInsets.symmetric(
                             horizontal: 13, vertical: 7),
                         decoration: BoxDecoration(
-                          color: active ? accent : AppColors.surfaceLight,
+                          gradient: active
+                              ? LinearGradient(
+                                  colors: [accent, AppColors.primaryDark],
+                                )
+                              : null,
+                          color: active ? null : AppColors.surfaceLight,
                           borderRadius: BorderRadius.circular(18),
                           border: Border.all(
                             color:
-                                active ? Colors.transparent : AppColors.border,
+                                active ? Colors.white24 : AppColors.border,
                           ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              q['icon'] as IconData,
-                              size: 13,
+                              q.icon,
+                              size: 14,
                               color:
                                   active ? Colors.white : AppColors.textMuted,
                             ),
                             const SizedBox(width: 5),
                             Text(
-                              q['label'] as String,
+                              q.label,
                               style: TextStyle(
                                 color:
                                     active ? Colors.white : AppColors.textMuted,
                                 fontSize: 11,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 5, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: active
+                                    ? Colors.black26
+                                    : AppColors.surfaceLighter,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                q.badge,
+                                style: TextStyle(
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: active
+                                      ? Colors.white
+                                      : AppColors.textMuted,
+                                ),
                               ),
                             ),
                           ],
@@ -5405,35 +6676,85 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
 
         const SizedBox(height: 14),
-        Container(
-          padding: const EdgeInsets.all(15),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: AppColors.border),
-          ),
+        Tilt3DCard(
+          padding: const EdgeInsets.all(16),
+          borderRadius: 20,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'المنصات المدعومة بالمعاينة والتنزيل المباشر',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.view_in_ar_rounded, color: accent, size: 19),
+                      const SizedBox(width: 7),
+                      const Text(
+                        'المنصات العالمية المدعومة بشعارات 3D المجسمة',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w900, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: accent.withOpacity(0.14),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: accent.withOpacity(0.35)),
+                    ),
+                    child: Text(
+                      '10 منصات 3D',
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w800,
+                        color: accent,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 4),
+              const Text(
+                'اضغط على أي شعار ثلاثي الأبعاد لمعاينة قدرات المنصة أو لصق الرابط المباشر',
+                style: TextStyle(fontSize: 10.5, color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 14),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _PlatformIcon(Icons.play_circle_fill, const Color(0xFFFF0000),
-                      'YouTube', activePlatform == 'youtube'),
-                  _PlatformIcon(Icons.music_note, const Color(0xFF00F2FE),
-                      'TikTok', activePlatform == 'tiktok'),
-                  _PlatformIcon(Icons.camera_alt, const Color(0xFFE4405F),
-                      'Instagram', activePlatform == 'instagram'),
-                  _PlatformIcon(Icons.facebook, const Color(0xFF1877F2),
-                      'Facebook', activePlatform == 'facebook'),
-                  _PlatformIcon(Icons.alternate_email, const Color(0xFF1DA1F2),
-                      'X / Twitter', activePlatform == 'twitter'),
-                ],
+                children: List.generate(5, (i) {
+                  final p = kSupportedPlatforms3D[i];
+                  return Expanded(
+                    child: Platform3DBadge(
+                      platformId: p.id,
+                      active: activePlatform == p.id,
+                      size: 48,
+                      phaseIndex: i,
+                      showLabel: true,
+                      showSubBadge: true,
+                      onTap: () => _showPlatform3DDetailsSheet(context, p),
+                    ),
+                  );
+                }),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: List.generate(5, (i) {
+                  final p = kSupportedPlatforms3D[i + 5];
+                  return Expanded(
+                    child: Platform3DBadge(
+                      platformId: p.id,
+                      active: activePlatform == p.id,
+                      size: 48,
+                      phaseIndex: i + 5,
+                      showLabel: true,
+                      showSubBadge: true,
+                      onTap: () => _showPlatform3DDetailsSheet(context, p),
+                    ),
+                  );
+                }),
               ),
             ],
           ),
@@ -5784,14 +7105,18 @@ class _FallbackThumbBanner extends StatelessWidget {
       height: 180,
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [c.withOpacity(0.24), AppColors.surface],
+          colors: [c.withOpacity(0.26), AppColors.surface],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
       ),
       child: Center(
-        child: Icon(platformIcon(platform),
-            size: 52, color: c.withOpacity(0.45)),
+        child: Platform3DBadge(
+          platformId: platform,
+          active: true,
+          size: 72,
+          showLabel: false,
+        ),
       ),
     );
   }
@@ -6110,16 +7435,16 @@ class _SmallPlatformBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 46,
-      height: 40,
-      decoration: BoxDecoration(
-        color: platformColor(platform).withOpacity(0.12),
-        border: Border.all(color: platformColor(platform).withOpacity(0.3)),
-        borderRadius: BorderRadius.circular(10),
+    return SizedBox(
+      width: 44,
+      height: 44,
+      child: CustomPaint(
+        painter: Platform3DLogoPainter(
+          platformId: platform,
+          active: false,
+          enable3D: AppState().enable3DEffects,
+        ),
       ),
-      child: Icon(platformIcon(platform),
-          color: platformColor(platform), size: 18),
     );
   }
 }
@@ -6150,9 +7475,22 @@ class _StudioScreenState extends State<StudioScreen> {
   @override
   Widget build(BuildContext context) {
     final s = AppState();
-    final saved = s.savedDeviceFiles;
-    final favorites = s.myDownloads.where((d) => d.isFavorite).toList();
-    final vaulted = s.myVaultDownloads;
+    List<DownloadEntry> applySort(List<DownloadEntry> input) {
+      final copy = List<DownloadEntry>.from(input);
+      if (s.studioSortBy == 'title') {
+        copy.sort((a, b) => a.title.compareTo(b.title));
+      } else if (s.studioSortBy == 'platform') {
+        copy.sort((a, b) => a.platform.compareTo(b.platform));
+      } else {
+        copy.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      }
+      return copy;
+    }
+
+    final saved = applySort(s.savedDeviceFiles);
+    final favorites =
+        applySort(s.myDownloads.where((d) => d.isFavorite).toList());
+    final vaulted = applySort(s.myVaultDownloads);
 
     return ListView(
       padding: const EdgeInsets.all(14),
@@ -6203,6 +7541,82 @@ class _StudioScreenState extends State<StudioScreen> {
               icon: const Icon(Icons.create_new_folder_outlined),
               tooltip: 'إنشاء مجلد جديد',
             ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _TimerBox(
+                value: '${s.myDownloads.where((d) => d.quality != "audio").length}',
+                label: 'فيديو MP4',
+              ),
+              _TimerBox(
+                value: '${s.myDownloads.where((d) => d.quality == "audio").length}',
+                label: 'صوت MP3',
+              ),
+              _TimerBox(
+                value: '${favorites.length}',
+                label: 'المفضلة',
+              ),
+              _TimerBox(
+                value: '${vaulted.length}',
+                label: 'بالخزنة السرية',
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            const Icon(Icons.sort_rounded, size: 15, color: AppColors.textMuted),
+            const SizedBox(width: 6),
+            const Text('ترتيب العناصر:',
+                style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+            const SizedBox(width: 8),
+            ...[
+              {'k': 'newest', 'l': 'الأحدث'},
+              {'k': 'title', 'l': 'الأبجدي'},
+              {'k': 'platform', 'l': 'المنصة'},
+            ].map((opt) {
+              final isSel = s.studioSortBy == opt['k'];
+              return Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: InkWell(
+                  onTap: () =>
+                      s.saveSettings(newStudioSortBy: opt['k'] as String),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isSel
+                          ? s.accentColor.withOpacity(0.18)
+                          : AppColors.surfaceLight,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isSel ? s.accentColor : AppColors.border,
+                      ),
+                    ),
+                    child: Text(
+                      opt['l'] as String,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: isSel ? Colors.white : AppColors.textMuted,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
           ],
         ),
         const SizedBox(height: 10),
@@ -6398,18 +7812,29 @@ class _StudioItemTile extends StatelessWidget {
             ),
           ),
           IconButton(
+            onPressed: () => s.toggleFavorite(entry),
+            icon: Icon(
+              entry.isFavorite ? Icons.bookmark : Icons.bookmark_border,
+              size: 18,
+              color: entry.isFavorite ? AppColors.warning : AppColors.textMuted,
+            ),
+            tooltip: 'المفضلة',
+          ),
+          IconButton(
             onPressed: () => s.toggleVault(entry),
             icon: Icon(
               entry.isVaulted ? Icons.lock : Icons.lock_open,
               size: 18,
               color: entry.isVaulted ? AppColors.vault : AppColors.textMuted,
             ),
+            tooltip: 'نقل للخزنة السرية',
           ),
           IconButton(
             onPressed: () =>
                 s.deleteDownloadItem(entry.id, deleteLocalFile: true),
             icon: const Icon(Icons.delete_outline,
                 color: AppColors.error, size: 19),
+            tooltip: 'حذف',
           ),
         ],
       ),
@@ -6418,7 +7843,7 @@ class _StudioItemTile extends StatelessWidget {
 }
 
 // ============================================================================
-// SMART TOOLS SCREEN (Link Inspector, Thumbnail Grabber & Data Calculator)
+// SMART TOOLS SCREEN (5 Advanced Creator & Downloader Pro Utilities)
 // ============================================================================
 class SmartToolsScreen extends StatefulWidget {
   const SmartToolsScreen({super.key});
@@ -6428,14 +7853,36 @@ class SmartToolsScreen extends StatefulWidget {
 }
 
 class _SmartToolsScreenState extends State<SmartToolsScreen> {
+  int activeToolTab = 0;
+
+  // Tool 1: HD Thumbnail & Metadata Grabber
   final inspectCtrl = TextEditingController();
   Map<String, String>? inspectedMeta;
   bool inspecting = false;
-  double durationMin = 5.0;
+
+  // Tool 2: Smart Multi-Link Extractor from Messy Text/Messages
+  final rawTextCtrl = TextEditingController();
+  List<String> extractedLinks = [];
+
+  // Tool 3: Viral Hashtag & SEO Title Generator
+  final topicCtrl = TextEditingController();
+  String selectedSeoPlatform = 'tiktok';
+  List<String> generatedHashtags = [];
+  List<String> generatedTitles = [];
+
+  // Tool 4: Visual 3D QR Matrix Generator
+  final qrInputCtrl = TextEditingController(text: 'https://dovid.app');
+
+  // Tool 5: Advanced Bitrate, Data & Download Time Calculator
+  double durationMin = 8.0;
+  double netSpeedMbps = 20.0;
 
   @override
   void dispose() {
     inspectCtrl.dispose();
+    rawTextCtrl.dispose();
+    topicCtrl.dispose();
+    qrInputCtrl.dispose();
     super.dispose();
   }
 
@@ -6451,156 +7898,697 @@ class _SmartToolsScreenState extends State<SmartToolsScreen> {
     });
   }
 
+  void _extractUrlsFromMessyText() {
+    final raw = rawTextCtrl.text;
+    final regex = RegExp(r'https?:\/\/[^\s"'<>]+', caseSensitive: false);
+    final matches = regex
+        .allMatches(raw)
+        .map((m) => m.group(0)!.trim())
+        .where((u) => u.length > 10)
+        .toSet()
+        .toList();
+    setState(() => extractedLinks = matches);
+  }
+
+  void _generateViralSeoPack() {
+    final rawTopic = topicCtrl.text.trim();
+    final topic = rawTopic.isEmpty ? 'صناعة المحتوى' : rawTopic;
+    final cleanTag = topic.replaceAll(RegExp(r'[^\w؀-ۿ]+'), '_');
+
+    final Map<String, List<String>> platformTags = {
+      'tiktok': [
+        '#$cleanTag',
+        '#تيك_توك',
+        '#اكسبلور',
+        '#ترند_مصر',
+        '#فيديوهات_قصيرة',
+        '#fyp',
+        '#viral',
+        '#foryoupage',
+        '#tiktokarab',
+        '#DOViD_Creator',
+      ],
+      'youtube': [
+        '#$cleanTag',
+        '#يوتيوب',
+        '#شورتس',
+        '#محتوى_هادف',
+        '#تعليم_وتطوير',
+        '#YouTubeShorts',
+        '#Trending4K',
+        '#ContentCreator',
+      ],
+      'instagram': [
+        '#$cleanTag',
+        '#انستجرام',
+        '#ريلز',
+        '#تصوير_احترافي',
+        '#اكسبلور_فولو',
+        '#ReelsInstagram',
+        '#InstaDaily',
+        '#ExplorePage',
+      ],
+      'twitter': [
+        '#$cleanTag',
+        '#منصة_X',
+        '#ترند_اليوم',
+        '#تقنية',
+        '#أخبار_عاجلة',
+        '#TrendingNow',
+      ],
+    };
+
+    setState(() {
+      generatedHashtags =
+          platformTags[selectedSeoPlatform] ?? platformTags['tiktok']!;
+      generatedTitles = [
+        'السر الكامل حول $topic الذي لم يخبرك به أحد (بجودة 4K)',
+        'كيف تحترف $topic في 5 دقائق خطوة بخطوة للمبتدئين والمحترفين',
+        'تجربتي الحقيقية مع $topic: أهم النصائح والنتائج المذهلة!',
+        'أقوى دليل عملي شامل عن $topic لعام 2026',
+      ];
+    });
+  }
+
+  String _formatDownloadSeconds(double sizeMB, double speedMbps) {
+    final megabytesPerSec = (speedMbps / 8.0).clamp(0.1, 500.0);
+    final totalSec = (sizeMB / megabytesPerSec).round();
+    if (totalSec < 60) return '$totalSec ثانية';
+    final min = totalSec ~/ 60;
+    final rem = totalSec % 60;
+    return '$min د و $rem ث';
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = AppState();
+    final accent = s.accentColor;
+
     return ListView(
       padding: const EdgeInsets.all(14),
       children: [
         Row(
           children: [
-            Icon(Icons.handyman_rounded, color: s.accentColor),
+            Icon(Icons.handyman_rounded, color: accent),
             const SizedBox(width: 8),
-            const Text('حقيبة الأدوات الذكية المساعدة',
-                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+            const Expanded(
+              child: Text(
+                'استوديو الأدوات الذكية المتقدمة (5 أدوات احترافية)',
+                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+              ),
+            ),
           ],
         ),
-        const SizedBox(height: 14),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        const SizedBox(height: 12),
+
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
             children: [
-              const Row(
-                children: [
-                  Icon(Icons.image_search_rounded,
-                      color: AppColors.guest, size: 18),
-                  SizedBox(width: 8),
-                  Text('مستخرج الصور المصغرة وبيانات الفيديو (HD Thumbnail)',
-                      style:
-                          TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
-                ],
+              _AdminTab(
+                label: '1. فاحص الغلاف HD',
+                icon: Icons.image_search_rounded,
+                active: activeToolTab == 0,
+                onTap: () => setState(() => activeToolTab = 0),
               ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: _AuthField(
-                      controller: inspectCtrl,
-                      icon: Icons.link,
-                      hint: 'الصق رابط الفيديو لاستخراج غلافه وبياناته...',
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: inspecting ? null : _inspectLink,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: s.accentColor,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 14),
-                    ),
-                    child: Text(inspecting ? '...' : 'فحص'),
-                  ),
-                ],
+              const SizedBox(width: 8),
+              _AdminTab(
+                label: '2. مستخرج الروابط الذكي',
+                icon: Icons.auto_fix_high_rounded,
+                active: activeToolTab == 1,
+                onTap: () => setState(() => activeToolTab = 1),
               ),
-              if (inspectedMeta != null) ...[
-                const SizedBox(height: 12),
-                if ((inspectedMeta!['thumbnail'] ?? '').isNotEmpty)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.network(
-                      inspectedMeta!['thumbnail']!,
-                      height: 160,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
+              const SizedBox(width: 8),
+              _AdminTab(
+                label: '3. مولد الهاشتاج والـ SEO',
+                icon: Icons.tag_rounded,
+                active: activeToolTab == 2,
+                onTap: () => setState(() => activeToolTab = 2),
+              ),
+              const SizedBox(width: 8),
+              _AdminTab(
+                label: '4. صانع باركود QR',
+                icon: Icons.qr_code_2_rounded,
+                active: activeToolTab == 3,
+                onTap: () => setState(() => activeToolTab = 3),
+              ),
+              const SizedBox(width: 8),
+              _AdminTab(
+                label: '5. حاسبة الباقة والسرعة',
+                icon: Icons.speed_rounded,
+                active: activeToolTab == 4,
+                onTap: () => setState(() => activeToolTab = 4),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // TOOL 1: HD Thumbnail & Metadata Grabber
+        if (activeToolTab == 0)
+          Tilt3DCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.image_search_rounded,
+                        color: AppColors.guest, size: 19),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'مستخرج الصور المصغرة وبيانات الفيديو (HD Thumbnail)',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 13.5),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _AuthField(
+                        controller: inspectCtrl,
+                        icon: Icons.link,
+                        hint: 'الصق رابط الفيديو لاستخراج غلافه وبياناته...',
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: inspecting ? null : _inspectLink,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: accent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 14),
+                      ),
+                      child: Text(inspecting ? '...' : 'فحص دقيق'),
+                    ),
+                  ],
+                ),
+                if (inspectedMeta != null) ...[
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Platform3DBadge(
+                        platformId: inspectedMeta!['platform'] ?? 'unknown',
+                        active: true,
+                        size: 46,
+                        showLabel: false,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'العنوان: ${inspectedMeta!['title'] ?? 'غير متوفر'}',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w800, fontSize: 12.5),
+                            ),
+                            Text(
+                              'القناة / الناشر: ${inspectedMeta!['author'] ?? 'غير متوفر'}',
+                              style: const TextStyle(
+                                  fontSize: 11, color: AppColors.textMuted),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  if ((inspectedMeta!['thumbnail'] ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: Image.network(
+                        inspectedMeta!['thumbnail']!,
+                        height: 175,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              Clipboard.setData(ClipboardData(
+                                  text: inspectedMeta!['thumbnail']!));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                      'تم نسخ رابط الصورة المصغرة عالية الدقة'),
+                                  backgroundColor: AppColors.success,
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.copy, size: 15),
+                            label: const Text('نسخ رابط الغلاف HD'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              s.sendLinksToBatchDownloader(
+                                  [inspectCtrl.text.trim()]);
+                            },
+                            icon: const Icon(Icons.download_rounded,
+                                size: 16, color: Colors.white),
+                            label: const Text('إرسال للتحميل',
+                                style: TextStyle(color: Colors.white)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: accent,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ],
+            ),
+          ),
+
+        // TOOL 2: Smart Multi-Link Extractor from Messy Text
+        if (activeToolTab == 1)
+          Tilt3DCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.auto_awesome_motion_rounded,
+                        color: AppColors.admin, size: 19),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'المستخرج الذكي للروابط من المحادثات والرسائل الطويلة',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 13.5),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'الصق أي رسالة واتساب أو تيليجرام تحتوي على كلام مختلط بروابط، وسيقوم النظام بفلترة واستخراج الروابط وتصنيفها بشعار كل منصة 3D.',
+                  style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: rawTextCtrl,
+                  maxLines: 4,
+                  decoration: InputDecoration(
+                    hintText:
+                        'الصق النص أو الرسالة هنا لاستخراج كافة الروابط تلقائياً...',
+                    filled: true,
+                    fillColor: AppColors.surfaceLight,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(color: AppColors.border),
                     ),
                   ),
-                const SizedBox(height: 8),
-                Text('العنوان: ${inspectedMeta!['title'] ?? 'غير متوفر'}',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 12)),
-                Text('الناشر: ${inspectedMeta!['author'] ?? 'غير متوفر'}',
-                    style: const TextStyle(
-                        fontSize: 11, color: AppColors.textMuted)),
-                if ((inspectedMeta!['thumbnail'] ?? '').isNotEmpty) ...[
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _extractUrlsFromMessyText,
+                        icon: const Icon(Icons.filter_alt_rounded,
+                            color: Colors.white, size: 17),
+                        label: const Text('استخراج وفلترة الروابط الآن',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: accent,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final data =
+                            await Clipboard.getData(Clipboard.kTextPlain);
+                        if (data?.text != null) {
+                          rawTextCtrl.text = data!.text!;
+                          _extractUrlsFromMessyText();
+                        }
+                      },
+                      icon: const Icon(Icons.content_paste_rounded, size: 15),
+                      label: const Text('لصق من الحافظة'),
+                    ),
+                  ],
+                ),
+                if (extractedLinks.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'تم العثور على (${extractedLinks.length}) رابط صالح:',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
+                            color: AppColors.success),
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: () =>
+                            s.sendLinksToBatchDownloader(extractedLinks),
+                        icon: const Icon(Icons.rocket_launch_rounded,
+                            size: 14, color: Colors.white),
+                        label: const Text('تحميل الكل دفعة واحدة',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.success,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 7),
+                          minimumSize: Size.zero,
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 8),
+                  ...extractedLinks.map((u) => Container(
+                        margin: const EdgeInsets.only(bottom: 7),
+                        padding: const EdgeInsets.all(9),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceLight,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Row(
+                          children: [
+                            _SmallPlatformBox(platform: detectPlatform(u)),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                u,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textDirection: TextDirection.ltr,
+                                style: const TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () {
+                                Clipboard.setData(ClipboardData(text: u));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('تم نسخ الرابط'),
+                                    backgroundColor: AppColors.success,
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.copy, size: 16),
+                            ),
+                          ],
+                        ),
+                      )),
+                ],
+              ],
+            ),
+          ),
+
+        // TOOL 3: Viral Hashtag & SEO Generator
+        if (activeToolTab == 2)
+          Tilt3DCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.trending_up_rounded,
+                        color: AppColors.warning, size: 19),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'مولد الهاشتاجات المتصدرة وعناوين SEO لصناع المحتوى',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 13.5),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: ['tiktok', 'youtube', 'instagram', 'twitter']
+                      .map((pid) => Platform3DBadge(
+                            platformId: pid,
+                            active: selectedSeoPlatform == pid,
+                            size: 44,
+                            showLabel: true,
+                            onTap: () =>
+                                setState(() => selectedSeoPlatform = pid),
+                          ))
+                      .toList(),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _AuthField(
+                        controller: topicCtrl,
+                        icon: Icons.lightbulb_outline,
+                        hint: 'اكتب موضوع الفيديو (مثال: برمجة تطبيقات فلاتر)',
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: _generateViralSeoPack,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: accent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 14),
+                      ),
+                      child: const Text('توليد'),
+                    ),
+                  ],
+                ),
+                if (generatedHashtags.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  const Text('الهاشتاجات المقترحة الأكثر انتشاراً:',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: generatedHashtags
+                        .map((tag) => _MiniTag(tag, accent))
+                        .toList(),
+                  ),
+                  const SizedBox(height: 10),
                   OutlinedButton.icon(
                     onPressed: () {
                       Clipboard.setData(
-                          ClipboardData(text: inspectedMeta!['thumbnail']!));
+                          ClipboardData(text: generatedHashtags.join(' ')));
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('تم نسخ رابط الصورة المصغرة عالية الدقة'),
+                          content: Text('تم نسخ جميع الهاشتاجات للحافظة'),
                           backgroundColor: AppColors.success,
                         ),
                       );
                     },
-                    icon: const Icon(Icons.copy, size: 15),
-                    label: const Text('نسخ رابط الغلاف HD'),
+                    icon: const Icon(Icons.copy_all_rounded, size: 16),
+                    label: const Text('نسخ حزمة الهاشتاجات كاملة'),
                   ),
+                  const SizedBox(height: 12),
+                  const Text('عناوين مقترحة لزيادة نسبة النقر (CTR):',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                  const SizedBox(height: 6),
+                  ...generatedTitles.map((t) => Container(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceLight,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(t,
+                                  style: const TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w700)),
+                            ),
+                            IconButton(
+                              onPressed: () {
+                                Clipboard.setData(ClipboardData(text: t));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('تم نسخ العنوان'),
+                                    backgroundColor: AppColors.success,
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.copy, size: 15),
+                            ),
+                          ],
+                        ),
+                      )),
                 ],
               ],
-            ],
+            ),
           ),
-        ),
-        const SizedBox(height: 14),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: AppColors.border),
+
+        // TOOL 4: Visual 3D QR Matrix Generator
+        if (activeToolTab == 3)
+          Tilt3DCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.qr_code_2_rounded,
+                        color: AppColors.success, size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'صانع مصفوفة باركود المشاركة السريعة (Visual QR Matrix)',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 13.5),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: qrInputCtrl,
+                  onChanged: (_) => setState(() {}),
+                  textDirection: TextDirection.ltr,
+                  decoration: InputDecoration(
+                    hintText: 'أدخل رابط الفيديو أو النص لتوليد مصفوفة QR...',
+                    filled: true,
+                    fillColor: AppColors.surfaceLight,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(color: AppColors.border),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceLight,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: accent.withOpacity(0.45)),
+                    ),
+                    child: SizedBox(
+                      width: 170,
+                      height: 170,
+                      child: CustomPaint(
+                        painter: VisualQrMatrixPainter(
+                          data: qrInputCtrl.text.trim(),
+                          foregroundColor: accent,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Center(
+                  child: Text(
+                    'مصفوفة QR رقمية جاهزة للمشاركة السريعة بين الأجهزة',
+                    style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                  ),
+                ),
+              ],
+            ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Row(
-                children: [
-                  Icon(Icons.speed_rounded, color: AppColors.api, size: 18),
-                  SizedBox(width: 8),
-                  Text('حاسبة استهلاك الباقة وحجم الفيديو التقريبي',
-                      style:
-                          TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text('مدة الفيديو: ${durationMin.toStringAsFixed(0)} دقيقة',
+
+        // TOOL 5: Advanced Bitrate, Storage & Transfer Time Calculator
+        if (activeToolTab == 4)
+          Tilt3DCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.speed_rounded, color: AppColors.api, size: 19),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'حاسبة استهلاك الباقة وحجم الفيديو وزمن التنزيل',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 13.5),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'مدة الفيديو: ${durationMin.toStringAsFixed(0)} دقيقة',
                   style: const TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w700)),
-              Slider(
-                value: durationMin,
-                min: 1,
-                max: 60,
-                divisions: 59,
-                activeColor: s.accentColor,
-                onChanged: (v) => setState(() => durationMin = v),
-              ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _TimerBox(
+                      fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+                Slider(
+                  value: durationMin,
+                  min: 1,
+                  max: 120,
+                  divisions: 119,
+                  activeColor: accent,
+                  onChanged: (v) => setState(() => durationMin = v),
+                ),
+                Text(
+                  'سرعة الإنترنت لديك: ${netSpeedMbps.toStringAsFixed(0)} Mbps',
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+                Slider(
+                  value: netSpeedMbps,
+                  min: 2,
+                  max: 100,
+                  divisions: 49,
+                  activeColor: AppColors.secondary,
+                  onChanged: (v) => setState(() => netSpeedMbps = v),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _TimerBox(
                       value: '${(durationMin * 1.4).toStringAsFixed(1)} MB',
-                      label: 'صوت MP3'),
-                  _TimerBox(
+                      label:
+                          'MP3 (${_formatDownloadSeconds(durationMin * 1.4, netSpeedMbps)})',
+                    ),
+                    _TimerBox(
                       value: '${(durationMin * 12).toStringAsFixed(0)} MB',
-                      label: 'HD 720p'),
-                  _TimerBox(
+                      label:
+                          '720p (${_formatDownloadSeconds(durationMin * 12, netSpeedMbps)})',
+                    ),
+                    _TimerBox(
                       value: '${(durationMin * 24).toStringAsFixed(0)} MB',
-                      label: 'FHD 1080p'),
-                  _TimerBox(
+                      label:
+                          '1080p (${_formatDownloadSeconds(durationMin * 24, netSpeedMbps)})',
+                    ),
+                    _TimerBox(
                       value: '${(durationMin * 65).toStringAsFixed(0)} MB',
-                      label: '4K Ultra'),
-                ],
-              ),
-            ],
+                      label:
+                          '4K (${_formatDownloadSeconds(durationMin * 65, netSpeedMbps)})',
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
       ],
     );
   }
@@ -6654,6 +8642,33 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ],
           ),
         ),
+        SizedBox(
+          height: 36,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: ChoiceChip(
+                  label: const Text('الكل', style: TextStyle(fontSize: 10.5)),
+                  selected: selectedPlatform == 'all',
+                  onSelected: (_) => setState(() => selectedPlatform = 'all'),
+                ),
+              ),
+              ...kSupportedPlatforms3D.map((p) => Padding(
+                    padding: const EdgeInsets.only(left: 6),
+                    child: ChoiceChip(
+                      label: Text(p.name, style: const TextStyle(fontSize: 10.5)),
+                      selected: selectedPlatform == p.id,
+                      onSelected: (_) =>
+                          setState(() => selectedPlatform = p.id),
+                    ),
+                  )),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14),
           child: TextField(
@@ -7035,6 +9050,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     style:
                         TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
                 onChanged: (v) => s.saveSettings(newAutoDetectClipboard: v),
+              ),
+              const Divider(color: AppColors.border),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: s.enable3DEffects,
+                activeColor: s.accentColor,
+                title: const Text(
+                    'تفعيل الشعارات والمجسمات ثلاثية الأبعاد (3D Logos & Tilt)',
+                    style:
+                        TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800)),
+                subtitle: const Text(
+                    'رسم هندسي ثلاثي الأبعاد لشعارات المنصات وبطاقات المنظور التفاعلية',
+                    style: TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
+                onChanged: (v) => s.saveSettings(newEnable3DEffects: v),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: s.highGraphicsEnabled,
+                activeColor: s.accentColor,
+                title: const Text(
+                    'تفعيل الرسوميات العالية والأنيميشن الفائق (60FPS Smooth)',
+                    style:
+                        TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800)),
+                subtitle: const Text(
+                    'حركات عائمة سلسة وموجات صوتية تفاعلية مع الحفاظ على راحة العين',
+                    style: TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
+                onChanged: (v) => s.saveSettings(newHighGraphics: v),
               ),
             ],
           ),

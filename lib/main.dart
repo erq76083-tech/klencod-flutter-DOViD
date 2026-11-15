@@ -16,7 +16,7 @@ import 'package:collection/collection.dart';
 const String kDevName = 'YOSSEF JOO';
 const String kDevWhatsapp = '01029892573';
 const String kAppName = 'DOViD';
-const String kAppVersion = 'v5.0 Pro';
+const String kAppVersion = 'v6.0 Ultra Pro';
 const String kApiEndpoint = 'https://zecora0.serv00.net/download/download.php';
 const String kApiPrice = '100';
 const String kAdminEmail = 'guhfyuggu7@gmail.com';
@@ -24,17 +24,17 @@ const String kAdminUsername = 'admin';
 const String kAdminPassword = 'guhfyuggu7@855A';
 
 // ============================================================================
-// THEME COLORS
+// THEME COLORS (Matte Dark & Comfortable Palette)
 // ============================================================================
 class AppColors {
   static const primary = Color(0xFFF97316);
   static const primaryDark = Color(0xFFEA580C);
   static const secondary = Color(0xFFEF4444);
-  static const bg = Color(0xFF050508);
-  static const surface = Color(0xFF0F0F1A);
-  static const surfaceLight = Color(0xFF1A1A2E);
-  static const surfaceLighter = Color(0xFF252540);
-  static const border = Color(0x14FFFFFF);
+  static const bg = Color(0xFF07080D);
+  static const surface = Color(0xFF11131F);
+  static const surfaceLight = Color(0xFF1A1D2E);
+  static const surfaceLighter = Color(0xFF24283E);
+  static const border = Color(0x18FFFFFF);
   static const text = Color(0xFFF8FAFC);
   static const textMuted = Color(0xFF94A3B8);
   static const textDim = Color(0xFF64748B);
@@ -95,12 +95,19 @@ class DownloadEntry {
   final String userId;
   final String url;
   String title;
+  String author;
+  String thumbnailUrl;
+  String durationText;
+  String fileSizeText;
   String platform;
   String downloadLink;
+  String hdLink;
+  String audioLink;
   String localPath;
   String quality;
   String status;
   String strategy;
+  bool isFavorite;
   final DateTime createdAt;
   DateTime? completedAt;
 
@@ -109,12 +116,19 @@ class DownloadEntry {
     required this.userId,
     required this.url,
     this.title = '',
+    this.author = '',
+    this.thumbnailUrl = '',
+    this.durationText = '',
+    this.fileSizeText = '',
     this.platform = 'unknown',
     this.downloadLink = '',
+    this.hdLink = '',
+    this.audioLink = '',
     this.localPath = '',
     this.quality = 'auto',
     this.status = 'pending',
     this.strategy = '',
+    this.isFavorite = false,
     required this.createdAt,
     this.completedAt,
   });
@@ -124,12 +138,19 @@ class DownloadEntry {
         'userId': userId,
         'url': url,
         'title': title,
+        'author': author,
+        'thumbnailUrl': thumbnailUrl,
+        'durationText': durationText,
+        'fileSizeText': fileSizeText,
         'platform': platform,
         'downloadLink': downloadLink,
+        'hdLink': hdLink,
+        'audioLink': audioLink,
         'localPath': localPath,
         'quality': quality,
         'status': status,
         'strategy': strategy,
+        'isFavorite': isFavorite,
         'createdAt': createdAt.toIso8601String(),
         'completedAt': completedAt?.toIso8601String(),
       };
@@ -139,12 +160,19 @@ class DownloadEntry {
         userId: j['userId'] ?? '',
         url: j['url'] ?? '',
         title: j['title'] ?? '',
+        author: j['author'] ?? '',
+        thumbnailUrl: j['thumbnailUrl'] ?? '',
+        durationText: j['durationText'] ?? '',
+        fileSizeText: j['fileSizeText'] ?? '',
         platform: j['platform'] ?? 'unknown',
         downloadLink: j['downloadLink'] ?? '',
+        hdLink: j['hdLink'] ?? '',
+        audioLink: j['audioLink'] ?? '',
         localPath: j['localPath'] ?? '',
         quality: j['quality'] ?? 'auto',
         status: j['status'] ?? 'pending',
         strategy: j['strategy'] ?? '',
+        isFavorite: j['isFavorite'] ?? false,
         createdAt: DateTime.tryParse(j['createdAt'] ?? '') ?? DateTime.now(),
         completedAt: j['completedAt'] != null
             ? DateTime.tryParse(j['completedAt'])
@@ -370,6 +398,28 @@ class SubscriptionCode {
       );
 }
 
+class ActiveDownloadTask {
+  final String entryId;
+  final String title;
+  double progress;
+  int receivedBytes;
+  int totalBytes;
+  double speedKBps;
+  String status; // 'downloading', 'completed', 'failed', 'canceled'
+  bool isCanceled;
+
+  ActiveDownloadTask({
+    required this.entryId,
+    required this.title,
+    this.progress = 0.0,
+    this.receivedBytes = 0,
+    this.totalBytes = 0,
+    this.speedKBps = 0.0,
+    this.status = 'downloading',
+    this.isCanceled = false,
+  });
+}
+
 // ============================================================================
 // APP STATE (Full System Singleton with Security, Rate Limiting & Settings)
 // ============================================================================
@@ -387,6 +437,8 @@ class AppState extends ChangeNotifier {
   // Settings
   Color accentColor = AppColors.primary;
   String defaultQuality = 'auto';
+  bool autoSaveAfterExtract = false;
+  bool autoDetectClipboard = true;
   bool adsEnabled = false;
   String adsensePublisherId = '';
   String adsenseDisplaySlot = '';
@@ -401,6 +453,9 @@ class AppState extends ChangeNotifier {
   List<BlockedIpEntry> blockedIps = [];
   List<ApiKey> apiKeys = [];
   List<SubscriptionCode> codes = [];
+
+  // Active Download Tasks
+  final Map<String, ActiveDownloadTask> activeTasks = {};
 
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
@@ -433,53 +488,59 @@ class AppState extends ChangeNotifier {
   }
 
   void _loadData() {
-    final u = _prefs!.getString('users');
-    if (u != null) {
-      users = (jsonDecode(u) as List)
-          .map((e) => AppUser.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
-    }
-    final d = _prefs!.getString('downloads');
-    if (d != null) {
-      downloads = (jsonDecode(d) as List)
-          .map((e) => DownloadEntry.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
-    }
-    final bp = _prefs!.getString('bypass_logs');
-    if (bp != null) {
-      bypassLogs = (jsonDecode(bp) as List)
-          .map((e) => BypassLogEntry.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
-    }
-    final la = _prefs!.getString('login_attempts');
-    if (la != null) {
-      loginAttempts = (jsonDecode(la) as List)
-          .map((e) => LoginAttemptEntry.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
-    }
-    final bi = _prefs!.getString('blocked_ips');
-    if (bi != null) {
-      blockedIps = (jsonDecode(bi) as List)
-          .map((e) => BlockedIpEntry.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
-    }
-    final a = _prefs!.getString('api_keys');
-    if (a != null) {
-      apiKeys = (jsonDecode(a) as List)
-          .map((e) => ApiKey.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
-    }
-    final c = _prefs!.getString('codes');
-    if (c != null) {
-      codes = (jsonDecode(c) as List)
-          .map((e) => SubscriptionCode.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
-    }
+    try {
+      final u = _prefs!.getString('users');
+      if (u != null) {
+        users = (jsonDecode(u) as List)
+            .map((e) => AppUser.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      }
+      final d = _prefs!.getString('downloads');
+      if (d != null) {
+        downloads = (jsonDecode(d) as List)
+            .map((e) => DownloadEntry.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      }
+      final bp = _prefs!.getString('bypass_logs');
+      if (bp != null) {
+        bypassLogs = (jsonDecode(bp) as List)
+            .map((e) => BypassLogEntry.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      }
+      final la = _prefs!.getString('login_attempts');
+      if (la != null) {
+        loginAttempts = (jsonDecode(la) as List)
+            .map((e) =>
+                LoginAttemptEntry.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      }
+      final bi = _prefs!.getString('blocked_ips');
+      if (bi != null) {
+        blockedIps = (jsonDecode(bi) as List)
+            .map((e) => BlockedIpEntry.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      }
+      final a = _prefs!.getString('api_keys');
+      if (a != null) {
+        apiKeys = (jsonDecode(a) as List)
+            .map((e) => ApiKey.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      }
+      final c = _prefs!.getString('codes');
+      if (c != null) {
+        codes = (jsonDecode(c) as List)
+            .map((e) =>
+                SubscriptionCode.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      }
+    } catch (_) {}
 
     // Load Settings
     final colorVal = _prefs!.getInt('theme_color_int');
     if (colorVal != null) accentColor = Color(colorVal);
     defaultQuality = _prefs!.getString('default_quality') ?? 'auto';
+    autoSaveAfterExtract = _prefs!.getBool('auto_save_extract') ?? false;
+    autoDetectClipboard = _prefs!.getBool('auto_detect_clipboard') ?? true;
     adsEnabled = _prefs!.getBool('ads_enabled') ?? false;
     adsensePublisherId = _prefs!.getString('adsense_publisher_id') ?? '';
     adsenseDisplaySlot = _prefs!.getString('adsense_display_slot') ?? '';
@@ -490,6 +551,8 @@ class AppState extends ChangeNotifier {
   Future<void> saveSettings({
     Color? newColor,
     String? newQuality,
+    bool? newAutoSave,
+    bool? newAutoDetectClipboard,
     bool? newAdsEnabled,
     String? pubId,
     String? dispSlot,
@@ -503,6 +566,14 @@ class AppState extends ChangeNotifier {
     if (newQuality != null) {
       defaultQuality = newQuality;
       await _prefs?.setString('default_quality', newQuality);
+    }
+    if (newAutoSave != null) {
+      autoSaveAfterExtract = newAutoSave;
+      await _prefs?.setBool('auto_save_extract', newAutoSave);
+    }
+    if (newAutoDetectClipboard != null) {
+      autoDetectClipboard = newAutoDetectClipboard;
+      await _prefs?.setBool('auto_detect_clipboard', newAutoDetectClipboard);
     }
     if (newAdsEnabled != null) {
       adsEnabled = newAdsEnabled;
@@ -538,8 +609,8 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _saveBypassLogs() async {
-    if (bypassLogs.length > 200) {
-      bypassLogs = bypassLogs.sublist(0, 200);
+    if (bypassLogs.length > 250) {
+      bypassLogs = bypassLogs.sublist(0, 250);
     }
     await _prefs?.setString(
         'bypass_logs', jsonEncode(bypassLogs.map((e) => e.toJson()).toList()));
@@ -606,7 +677,9 @@ class AppState extends ChangeNotifier {
       return 'تم حظر الجهاز تلقائياً لتكرار المحاولات الفاشلة (10 محاولات)';
     }
 
-    final user = users.where((u) => u.username == username).firstOrNull;
+    final user = users
+        .where((u) => u.username.toLowerCase() == username.toLowerCase())
+        .firstOrNull;
     final validPass = user != null && user.passwordHash == _hash(password);
 
     loginAttempts.insert(
@@ -683,6 +756,10 @@ class AppState extends ChangeNotifier {
     return list;
   }
 
+  List<DownloadEntry> get savedDeviceFiles {
+    return myDownloads.where((d) => d.localPath.isNotEmpty).toList();
+  }
+
   int get totalDownloads => myDownloads.length;
   int get successDownloads =>
       myDownloads.where((d) => d.status == 'success').length;
@@ -730,19 +807,60 @@ class AppState extends ChangeNotifier {
   Future<void> updateDownload(
     DownloadEntry entry, {
     String? title,
+    String? author,
+    String? thumbnailUrl,
+    String? durationText,
+    String? fileSizeText,
     String? link,
+    String? hdLink,
+    String? audioLink,
     String? localPath,
     String? status,
     String? strategy,
+    bool? isFavorite,
   }) async {
-    if (title != null) entry.title = title;
+    if (title != null && title.isNotEmpty) entry.title = title;
+    if (author != null && author.isNotEmpty) entry.author = author;
+    if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
+      entry.thumbnailUrl = thumbnailUrl;
+    }
+    if (durationText != null && durationText.isNotEmpty) {
+      entry.durationText = durationText;
+    }
+    if (fileSizeText != null && fileSizeText.isNotEmpty) {
+      entry.fileSizeText = fileSizeText;
+    }
     if (link != null) entry.downloadLink = link;
+    if (hdLink != null) entry.hdLink = hdLink;
+    if (audioLink != null) entry.audioLink = audioLink;
     if (localPath != null) entry.localPath = localPath;
     if (status != null) entry.status = status;
     if (strategy != null) entry.strategy = strategy;
+    if (isFavorite != null) entry.isFavorite = isFavorite;
     if (status == 'success' || status == 'failed') {
       entry.completedAt = DateTime.now();
     }
+    await _saveDownloads();
+    notifyListeners();
+  }
+
+  Future<void> toggleFavorite(DownloadEntry entry) async {
+    entry.isFavorite = !entry.isFavorite;
+    await _saveDownloads();
+    notifyListeners();
+  }
+
+  Future<void> deleteDownloadItem(String id, {bool deleteLocalFile = false}) async {
+    final target = downloads.where((d) => d.id == id).firstOrNull;
+    if (target != null && deleteLocalFile && target.localPath.isNotEmpty) {
+      try {
+        final f = File(target.localPath);
+        if (await f.exists()) {
+          await f.delete();
+        }
+      } catch (_) {}
+    }
+    downloads.removeWhere((d) => d.id == id);
     await _saveDownloads();
     notifyListeners();
   }
@@ -754,6 +872,25 @@ class AppState extends ChangeNotifier {
     bypassLogs.removeWhere((b) => b.userId == uid);
     await _saveDownloads();
     await _saveBypassLogs();
+    notifyListeners();
+  }
+
+  void updateActiveTask(ActiveDownloadTask task) {
+    activeTasks[task.entryId] = task;
+    notifyListeners();
+  }
+
+  void cancelTask(String entryId) {
+    final t = activeTasks[entryId];
+    if (t != null) {
+      t.isCanceled = true;
+      t.status = 'canceled';
+      notifyListeners();
+    }
+  }
+
+  void removeActiveTask(String entryId) {
+    activeTasks.remove(entryId);
     notifyListeners();
   }
 
@@ -886,13 +1023,27 @@ String detectPlatform(String url) {
   if (u.contains('youtube.com') || u.contains('youtu.be')) return 'youtube';
   if (u.contains('instagram.com')) return 'instagram';
   if (u.contains('tiktok.com')) return 'tiktok';
-  if (u.contains('facebook.com') || u.contains('fb.watch')) return 'facebook';
-  if (u.contains('twitter.com') || u.contains('x.com')) return 'twitter';
+  if (u.contains('facebook.com') || u.contains('fb.watch') || u.contains('fb.gg')) {
+    return 'facebook';
+  }
+  if (u.contains('twitter.com') || u.contains('x.com') || u.contains('t.co')) {
+    return 'twitter';
+  }
   if (u.contains('snapchat.com')) return 'snapchat';
   if (u.contains('pinterest.com') || u.contains('pin.it')) return 'pinterest';
   if (u.contains('vimeo.com')) return 'vimeo';
-  if (u.contains('dailymotion.com')) return 'dailymotion';
+  if (u.contains('dailymotion.com') || u.contains('dai.ly')) return 'dailymotion';
+  if (u.contains('reddit.com') || u.contains('redd.it')) return 'reddit';
   return 'unknown';
+}
+
+String? extractYoutubeId(String url) {
+  final regExp = RegExp(
+    r'(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})',
+    caseSensitive: false,
+  );
+  final match = regExp.firstMatch(url);
+  return match?.group(1);
 }
 
 IconData platformIcon(String p) {
@@ -915,6 +1066,8 @@ IconData platformIcon(String p) {
       return Icons.videocam;
     case 'dailymotion':
       return Icons.play_arrow;
+    case 'reddit':
+      return Icons.forum;
     default:
       return Icons.video_file;
   }
@@ -940,6 +1093,8 @@ Color platformColor(String p) {
       return const Color(0xFF1AB7EA);
     case 'dailymotion':
       return const Color(0xFF00AAFF);
+    case 'reddit':
+      return const Color(0xFFFF4500);
     default:
       return AppState().accentColor;
   }
@@ -948,14 +1103,34 @@ Color platformColor(String p) {
 String timeAgo(DateTime dt) {
   final diff = DateTime.now().difference(dt);
   if (diff.inSeconds < 60) return 'الآن';
-  if (diff.inMinutes < 60) return '${diff.inMinutes} دقيقة';
-  if (diff.inHours < 24) return '${diff.inHours} ساعة';
-  if (diff.inDays < 7) return '${diff.inDays} يوم';
+  if (diff.inMinutes < 60) return 'منذ ${diff.inMinutes} دقيقة';
+  if (diff.inHours < 24) return 'منذ ${diff.inHours} ساعة';
+  if (diff.inDays < 7) return 'منذ ${diff.inDays} يوم';
   return DateFormat('yyyy-MM-dd').format(dt);
 }
 
+String formatBytes(int bytes) {
+  if (bytes <= 0) return '0 B';
+  const suffixes = ['B', 'KB', 'MB', 'GB'];
+  var i = (log(bytes) / log(1024)).floor();
+  if (i >= suffixes.length) i = suffixes.length - 1;
+  return '${(bytes / pow(1024, i)).toStringAsFixed(1)} ${suffixes[i]}';
+}
+
+String formatDurationSeconds(int seconds) {
+  if (seconds <= 0) return '';
+  final m = seconds ~/ 60;
+  final s = seconds % 60;
+  if (m >= 60) {
+    final h = m ~/ 60;
+    final remM = m % 60;
+    return '$h:${remM.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+  return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+}
+
 // ============================================================================
-// SMART MULTI-STRATEGY DOWNLOAD & FILE STREAMING SERVICE
+// SMART MULTI-STRATEGY DOWNLOAD, PREVIEW & FILE STREAMING SERVICE
 // ============================================================================
 class DownloadService {
   static Future<String> _resolveShortUrl(String url) async {
@@ -963,25 +1138,216 @@ class DownloadService {
     if (!lowerUrl.contains('vt.tiktok.com') &&
         !lowerUrl.contains('vm.tiktok.com') &&
         !lowerUrl.contains('fb.watch') &&
-        !lowerUrl.contains('pin.it')) {
+        !lowerUrl.contains('pin.it') &&
+        !lowerUrl.contains('t.co')) {
       return url;
     }
     try {
       final client = HttpClient();
       client.connectionTimeout = const Duration(seconds: 8);
       client.badCertificateCallback = (_, __, ___) => true;
-      final request = await client.headUrl(Uri.parse(url));
+      final request = await client.getUrl(Uri.parse(url));
       request.followRedirects = true;
+      request.maxRedirects = 6;
       final response = await request.close();
       String finalUrl = url;
       if (response.redirects.isNotEmpty) {
-        finalUrl = response.redirects.last.location.toString();
+        final loc = response.redirects.last.location;
+        finalUrl = loc.isAbsolute ? loc.toString() : Uri.parse(url).resolveUri(loc).toString();
       }
+      await response.drain();
       client.close();
       return finalUrl;
     } catch (_) {
       return url;
     }
+  }
+
+  /// استخراج بيانات المعاينة السريعة (الصورة المصغرة، العنوان، القناة) من الرابط مباشرة
+  static Future<Map<String, String>> fetchQuickPreviewMetadata(String rawUrl) async {
+    final result = <String, String>{
+      'title': '',
+      'author': '',
+      'thumbnail': '',
+      'platform': detectPlatform(rawUrl),
+    };
+
+    final ytId = extractYoutubeId(rawUrl);
+    if (ytId != null) {
+      result['thumbnail'] = 'https://img.youtube.com/vi/$ytId/hqdefault.jpg';
+      try {
+        final oembedUrl =
+            'https://noembed.com/embed?url=${Uri.encodeComponent('https://www.youtube.com/watch?v=$ytId')}';
+        final res = await http
+            .get(Uri.parse(oembedUrl))
+            .timeout(const Duration(seconds: 6));
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body);
+          result['title'] = (data['title'] ?? '').toString();
+          result['author'] = (data['author_name'] ?? '').toString();
+          if ((data['thumbnail_url'] ?? '').toString().isNotEmpty) {
+            result['thumbnail'] = data['thumbnail_url'].toString();
+          }
+        }
+      } catch (_) {}
+      return result;
+    }
+
+    try {
+      final noembed =
+          'https://noembed.com/embed?url=${Uri.encodeComponent(rawUrl)}';
+      final res = await http
+          .get(Uri.parse(noembed))
+          .timeout(const Duration(seconds: 6));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['title'] != null) result['title'] = data['title'].toString();
+        if (data['author_name'] != null) {
+          result['author'] = data['author_name'].toString();
+        }
+        if (data['thumbnail_url'] != null) {
+          result['thumbnail'] = data['thumbnail_url'].toString();
+        }
+      }
+    } catch (_) {}
+
+    return result;
+  }
+
+  /// تطبيع البيانات القادمة من أي سيرفر لاستخراج الرابط، الصورة، العنوان، الحجم، والمدة
+  static Map<String, dynamic>? _normalizeServerPayload(
+    dynamic rawJson,
+    String originalUrl,
+    String quality,
+  ) {
+    if (rawJson is! Map) return null;
+    final map = Map<String, dynamic>.from(rawJson);
+
+    String link = '';
+    String hdLink = '';
+    String audioLink = '';
+    String title = (map['title'] ?? map['desc'] ?? map['text'] ?? '').toString();
+    String author = (map['author'] is Map
+            ? (map['author']['nickname'] ?? map['author']['unique_id'] ?? '')
+            : (map['author'] ?? map['uploader'] ?? map['owner'] ?? ''))
+        .toString();
+    String thumb = (map['thumbnail'] ??
+            map['cover'] ??
+            map['origin_cover'] ??
+            map['picture'] ??
+            map['image'] ??
+            '')
+        .toString();
+    String durationText = '';
+    String fileSizeText = '';
+
+    // فحص حقل المدة
+    if (map['duration'] != null) {
+      final d = int.tryParse(map['duration'].toString());
+      if (d != null && d > 0) {
+        durationText = formatDurationSeconds(d);
+      } else {
+        durationText = map['duration'].toString();
+      }
+    }
+
+    // فحص الحجم
+    if (map['size'] != null || map['hd_size'] != null) {
+      final s = int.tryParse((map['hd_size'] ?? map['size']).toString());
+      if (s != null && s > 0) {
+        fileSizeText = formatBytes(s);
+      }
+    }
+
+    // استخراج الروابط المباشرة المحتملة
+    final candidates = [
+      map['answer'],
+      map['url'],
+      map['download_url'],
+      map['video_url'],
+      map['hdplay'],
+      map['play'],
+      map['nwm_video_url'],
+      map['wmplay'],
+    ];
+    for (final c in candidates) {
+      if (c is String && c.startsWith('http')) {
+        link = c;
+        break;
+      }
+    }
+
+    if (map['hdplay'] is String && map['hdplay'].toString().startsWith('http')) {
+      hdLink = map['hdplay'].toString();
+    }
+    if (map['music'] is String && map['music'].toString().startsWith('http')) {
+      audioLink = map['music'].toString();
+    } else if (map['audio'] is String &&
+        map['audio'].toString().startsWith('http')) {
+      audioLink = map['audio'].toString();
+    }
+
+    // فحص لو كانت البيانات بداخل كائن data أو result فرعي
+    if (link.isEmpty && map['data'] is Map) {
+      final sub = _normalizeServerPayload(map['data'], originalUrl, quality);
+      if (sub != null) return sub;
+    }
+    if (link.isEmpty && map['result'] is Map) {
+      final sub = _normalizeServerPayload(map['result'], originalUrl, quality);
+      if (sub != null) return sub;
+    }
+
+    // فحص مصفوفة medias أو formats أو links
+    final mediaLists = [map['medias'], map['formats'], map['links'], map['urls']];
+    for (final listCandidate in mediaLists) {
+      if (listCandidate is List && listCandidate.isNotEmpty) {
+        for (final item in listCandidate) {
+          if (item is Map) {
+            final u = (item['url'] ?? item['link'] ?? item['download'] ?? '')
+                .toString();
+            final q = (item['quality'] ?? item['ext'] ?? item['type'] ?? '')
+                .toString()
+                .toLowerCase();
+            if (u.startsWith('http')) {
+              if (link.isEmpty) link = u;
+              if (q.contains('hd') || q.contains('1080') || q.contains('720')) {
+                hdLink = u;
+              }
+              if (q.contains('mp3') || q.contains('audio') || q.contains('m4a')) {
+                audioLink = u;
+              }
+            }
+          } else if (item is String && item.startsWith('http') && link.isEmpty) {
+            link = item;
+          }
+        }
+      }
+    }
+
+    if (quality == 'audio' && audioLink.isNotEmpty) {
+      link = audioLink;
+    } else if ((quality == '4k' || quality == '1080') && hdLink.isNotEmpty) {
+      link = hdLink;
+    }
+
+    if (link.isEmpty) return null;
+
+    final ytId = extractYoutubeId(originalUrl);
+    if (thumb.isEmpty && ytId != null) {
+      thumb = 'https://img.youtube.com/vi/$ytId/hqdefault.jpg';
+    }
+
+    return {
+      'status': 'success',
+      'answer': link,
+      'hdLink': hdLink.isNotEmpty ? hdLink : link,
+      'audioLink': audioLink,
+      'title': title,
+      'author': author,
+      'thumbnail': thumb,
+      'duration': durationText,
+      'fileSize': fileSizeText,
+    };
   }
 
   static Future<Map<String, dynamic>> download(
@@ -990,6 +1356,10 @@ class DownloadService {
     void Function(String strategyName)? onStrategyTrying,
   }) async {
     final url = await _resolveShortUrl(originalUrl);
+    final platform = detectPlatform(url);
+
+    // جلب بيانات المعاينة الأولية بالتوازي لتعزيز النتيجة
+    final quickMetaFuture = fetchQuickPreviewMetadata(url);
 
     const desktopUserAgent =
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
@@ -999,14 +1369,20 @@ class DownloadService {
       'Accept': 'application/json, text/plain, */*',
     };
 
+    // ترتيب المحركات بذكاء: إذا كان الرابط TikTok يبدأ بمحرك TikWM فائق السرعة
     final strategies =
         <String, Future<Map<String, dynamic>?> Function(String)>{
+      if (platform == 'tiktok')
+        'tikwm_ultra_hd': (u) => _tikwmFallback(u, quality),
       'direct_post_json': (u) => _directPostJson(u, headers, quality),
       'direct_post_form': (u) => _directPostForm(u, headers, quality),
-      'tikwm_engine': (u) => _tikwmFallback(u, quality),
-      'allorigins_post': (u) => _alloriginsPost(u, headers),
-      'allorigins_get': (u) => _alloriginsGet(u, headers),
-      'corsproxy_post': (u) => _corsproxy(u, headers),
+      'direct_get_query': (u) => _directGetQuery(u, headers, quality),
+      if (platform != 'tiktok')
+        'tikwm_engine': (u) => _tikwmFallback(u, quality),
+      'cobalt_multi_engine': (u) => _cobaltEngine(u, quality),
+      'allorigins_post': (u) => _alloriginsPost(u, headers, quality),
+      'allorigins_get': (u) => _alloriginsGet(u, headers, quality),
+      'corsproxy_post': (u) => _corsproxy(u, headers, quality),
     };
 
     for (final entry in strategies.entries) {
@@ -1027,6 +1403,19 @@ class DownloadService {
         );
 
         if (ok) {
+          final quickMeta = await quickMetaFuture;
+          if ((result['title'] ?? '').toString().trim().isEmpty &&
+              (quickMeta['title'] ?? '').isNotEmpty) {
+            result['title'] = quickMeta['title'];
+          }
+          if ((result['author'] ?? '').toString().trim().isEmpty &&
+              (quickMeta['author'] ?? '').isNotEmpty) {
+            result['author'] = quickMeta['author'];
+          }
+          if ((result['thumbnail'] ?? '').toString().trim().isEmpty &&
+              (quickMeta['thumbnail'] ?? '').isNotEmpty) {
+            result['thumbnail'] = quickMeta['thumbnail'];
+          }
           result['strategy'] = entry.key;
           return result;
         }
@@ -1043,7 +1432,7 @@ class DownloadService {
     return {
       'status': 'error',
       'message':
-          'فشلت جميع استراتيجيات التخطي الـ 6. تأكد من صحة الرابط وأن الفيديو عام.',
+          'تعذر استخراج الفيديو عبر جميع محركات التخطي الذكية. تأكد من أن الفيديو عام وليس خاصاً.',
     };
   }
 
@@ -1054,11 +1443,11 @@ class DownloadService {
           .post(
             Uri.parse(kApiEndpoint),
             headers: {...headers, 'Content-Type': 'application/json'},
-            body: jsonEncode({'text': url, 'quality': quality}),
+            body: jsonEncode({'text': url, 'url': url, 'quality': quality}),
           )
-          .timeout(const Duration(seconds: 22));
+          .timeout(const Duration(seconds: 20));
       if (res.statusCode == 200) {
-        return Map<String, dynamic>.from(jsonDecode(res.body));
+        return _normalizeServerPayload(jsonDecode(res.body), url, quality);
       }
     } catch (_) {}
     return null;
@@ -1074,11 +1463,26 @@ class DownloadService {
               ...headers,
               'Content-Type': 'application/x-www-form-urlencoded'
             },
-            body: {'text': url, 'quality': quality},
+            body: {'text': url, 'url': url, 'quality': quality},
           )
-          .timeout(const Duration(seconds: 22));
+          .timeout(const Duration(seconds: 20));
       if (res.statusCode == 200) {
-        return Map<String, dynamic>.from(jsonDecode(res.body));
+        return _normalizeServerPayload(jsonDecode(res.body), url, quality);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> _directGetQuery(
+      String url, Map<String, String> headers, String quality) async {
+    try {
+      final target =
+          '$kApiEndpoint?text=${Uri.encodeComponent(url)}&url=${Uri.encodeComponent(url)}&quality=$quality';
+      final res = await http
+          .get(Uri.parse(target), headers: headers)
+          .timeout(const Duration(seconds: 18));
+      if (res.statusCode == 200) {
+        return _normalizeServerPayload(jsonDecode(res.body), url, quality);
       }
     } catch (_) {}
     return null;
@@ -1092,19 +1496,46 @@ class DownloadService {
         Uri.parse('https://www.tikwm.com/api/'),
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
         body: {'url': url, 'hd': '1'},
-      ).timeout(const Duration(seconds: 18));
+      ).timeout(const Duration(seconds: 16));
       if (res.statusCode == 200) {
         final j = jsonDecode(res.body);
         if (j['code'] == 0 && j['data'] != null) {
           final d = j['data'];
-          final link = (quality == 'audio' && d['music'] != null)
-              ? d['music'].toString()
-              : (d['hdplay'] ?? d['play'] ?? d['wmplay'] ?? '').toString();
-          if (link.isNotEmpty) {
+          String fixUrl(dynamic raw) {
+            final s = (raw ?? '').toString();
+            if (s.isEmpty) return '';
+            if (s.startsWith('http')) return s;
+            return 'https://www.tikwm.com$s';
+          }
+
+          final hd = fixUrl(d['hdplay']);
+          final play = fixUrl(d['play']);
+          final wm = fixUrl(d['wmplay']);
+          final music = fixUrl(d['music']);
+          final cover = fixUrl(d['origin_cover'] ?? d['cover']);
+
+          final chosenLink = (quality == 'audio' && music.isNotEmpty)
+              ? music
+              : (hd.isNotEmpty ? hd : (play.isNotEmpty ? play : wm));
+
+          if (chosenLink.isNotEmpty) {
+            final durSec = int.tryParse((d['duration'] ?? '0').toString()) ?? 0;
+            final sizeBytes =
+                int.tryParse((d['hd_size'] ?? d['size'] ?? '0').toString()) ??
+                    0;
             return {
               'status': 'success',
-              'answer': link,
+              'answer': chosenLink,
+              'hdLink': hd.isNotEmpty ? hd : play,
+              'audioLink': music,
               'title': (d['title'] ?? 'فيديو TikTok بدون علامة مائية').toString(),
+              'author': (d['author'] is Map
+                      ? (d['author']['nickname'] ?? d['author']['unique_id'] ?? '')
+                      : '')
+                  .toString(),
+              'thumbnail': cover,
+              'duration': formatDurationSeconds(durSec),
+              'fileSize': sizeBytes > 0 ? formatBytes(sizeBytes) : '',
               'quality': quality == 'audio' ? 'MP3 Audio' : 'HD No-Watermark',
             };
           }
@@ -1114,8 +1545,44 @@ class DownloadService {
     return null;
   }
 
+  static Future<Map<String, dynamic>?> _cobaltEngine(
+      String url, String quality) async {
+    try {
+      final res = await http
+          .post(
+            Uri.parse('https://api.cobalt.tools/api/json'),
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'url': url,
+              'vQuality': quality == '4k'
+                  ? 'max'
+                  : (quality == '720' ? '720' : '1080'),
+              'isAudioOnly': quality == 'audio',
+            }),
+          )
+          .timeout(const Duration(seconds: 16));
+      if (res.statusCode == 200) {
+        final j = jsonDecode(res.body);
+        final link = (j['url'] ?? '').toString();
+        if (link.startsWith('http')) {
+          return {
+            'status': 'success',
+            'answer': link,
+            'hdLink': link,
+            'audioLink': quality == 'audio' ? link : '',
+            'title': (j['filename'] ?? '').toString(),
+          };
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   static Future<Map<String, dynamic>?> _alloriginsPost(
-      String url, Map<String, String> headers) async {
+      String url, Map<String, String> headers, String quality) async {
     try {
       final proxy =
           'https://api.allorigins.win/raw?url=${Uri.encodeComponent(kApiEndpoint)}';
@@ -1123,29 +1590,30 @@ class DownloadService {
           .post(
             Uri.parse(proxy),
             headers: {...headers, 'Content-Type': 'application/json'},
-            body: jsonEncode({'text': url}),
+            body: jsonEncode({'text': url, 'quality': quality}),
           )
-          .timeout(const Duration(seconds: 22));
+          .timeout(const Duration(seconds: 20));
       if (res.statusCode == 200) {
-        return Map<String, dynamic>.from(jsonDecode(res.body));
+        return _normalizeServerPayload(jsonDecode(res.body), url, quality);
       }
     } catch (_) {}
     return null;
   }
 
   static Future<Map<String, dynamic>?> _alloriginsGet(
-      String url, Map<String, String> headers) async {
+      String url, Map<String, String> headers, String quality) async {
     try {
       final target = '$kApiEndpoint?text=${Uri.encodeComponent(url)}';
       final proxy =
           'https://api.allorigins.win/get?url=${Uri.encodeComponent(target)}&timestamp=${DateTime.now().millisecondsSinceEpoch}';
       final res = await http
           .get(Uri.parse(proxy), headers: headers)
-          .timeout(const Duration(seconds: 22));
+          .timeout(const Duration(seconds: 20));
       if (res.statusCode == 200) {
         final wrapper = jsonDecode(res.body);
         if (wrapper['contents'] != null) {
-          return Map<String, dynamic>.from(jsonDecode(wrapper['contents']));
+          return _normalizeServerPayload(
+              jsonDecode(wrapper['contents']), url, quality);
         }
       }
     } catch (_) {}
@@ -1153,7 +1621,7 @@ class DownloadService {
   }
 
   static Future<Map<String, dynamic>?> _corsproxy(
-      String url, Map<String, String> headers) async {
+      String url, Map<String, String> headers, String quality) async {
     try {
       final proxy =
           'https://corsproxy.io/?${Uri.encodeComponent(kApiEndpoint)}';
@@ -1161,24 +1629,69 @@ class DownloadService {
           .post(
             Uri.parse(proxy),
             headers: {...headers, 'Content-Type': 'application/json'},
-            body: jsonEncode({'text': url}),
+            body: jsonEncode({'text': url, 'quality': quality}),
           )
-          .timeout(const Duration(seconds: 22));
+          .timeout(const Duration(seconds: 20));
       if (res.statusCode == 200) {
-        return Map<String, dynamic>.from(jsonDecode(res.body));
+        return _normalizeServerPayload(jsonDecode(res.body), url, quality);
       }
     } catch (_) {}
     return null;
   }
 
-  /// تنزيل مباشر للملف داخل ذاكرة الهاتف مع شريط تقدم وترويسات تخطي الحجب
+  /// إيجاد أفضل مجلد متاح وقابل للكتابة على الهاتف بدون أخطاء صلاحيات
+  static Future<Directory> _resolveWritableDirectory() async {
+    final candidates = [
+      '/storage/emulated/0/Download/DOViD',
+      '/storage/emulated/0/Download',
+      '/storage/emulated/0/Movies/DOViD',
+      '/storage/emulated/0/DCIM/DOViD',
+      '/sdcard/Download',
+    ];
+
+    for (final path in candidates) {
+      try {
+        final dir = Directory(path);
+        if (!await dir.exists()) {
+          await dir.create(recursive: true);
+        }
+        // اختبار الكتابة الفعلية داخل المجلد
+        final probeFile =
+            File('${dir.path}/.dovid_probe_${DateTime.now().microsecondsSinceEpoch}');
+        await probeFile.writeAsString('ok');
+        await probeFile.delete();
+        return dir;
+      } catch (_) {
+        continue;
+      }
+    }
+    return Directory.systemTemp;
+  }
+
+  /// تنزيل مباشر للملف داخل ذاكرة الهاتف مع حساب السرعة اللحظية والحجم ودعم الإلغاء
   static Future<String?> downloadFileToDevice({
-    required String url,
-    required String filename,
-    required String platform,
+    required DownloadEntry entry,
     required bool isAudio,
-    required void Function(double progress) onProgress,
+    String? overrideUrl,
+    void Function(ActiveDownloadTask task)? onTaskUpdate,
   }) async {
+    final targetUrl = (overrideUrl != null && overrideUrl.isNotEmpty)
+        ? overrideUrl
+        : (isAudio && entry.audioLink.isNotEmpty
+            ? entry.audioLink
+            : entry.downloadLink);
+
+    if (targetUrl.isEmpty) return null;
+
+    final task = ActiveDownloadTask(
+      entryId: entry.id,
+      title: entry.title.isEmpty ? 'فيديو ${entry.platform}' : entry.title,
+    );
+    AppState().updateActiveTask(task);
+    onTaskUpdate?.call(task);
+
+    HttpClient? client;
+    IOSink? sink;
     try {
       final referers = {
         'youtube': 'https://www.youtube.com/',
@@ -1188,55 +1701,105 @@ class DownloadService {
         'twitter': 'https://x.com/',
       };
 
-      final client = HttpClient();
+      client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 25);
       client.badCertificateCallback = (_, __, ___) => true;
-      final req = await client.getUrl(Uri.parse(url));
+
+      final req = await client.getUrl(Uri.parse(targetUrl));
+      req.followRedirects = true;
+      req.maxRedirects = 8;
       req.headers.set('User-Agent',
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36');
-      if (referers.containsKey(platform)) {
-        req.headers.set('Referer', referers[platform]!);
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36');
+      req.headers.set('Accept', '*/*');
+      req.headers.set('Connection', 'keep-alive');
+      if (referers.containsKey(entry.platform)) {
+        req.headers.set('Referer', referers[entry.platform]!);
       }
 
       final res = await req.close();
       if (res.statusCode != 200 && res.statusCode != 206) {
+        task.status = 'failed';
+        AppState().removeActiveTask(entry.id);
         client.close();
         return null;
       }
 
-      final cleanName = filename
+      final cleanName = entry.title
           .replaceAll(RegExp(r'[^\w\u0600-\u06FF\s\-]'), '')
           .trim()
           .replaceAll(RegExp(r'\s+'), '_');
+      final stamp = DateTime.now().millisecondsSinceEpoch.toString().substring(8);
       final safeBase = cleanName.isEmpty
-          ? 'DOViD_${DateTime.now().millisecondsSinceEpoch}'
-          : (cleanName.length > 55 ? cleanName.substring(0, 55) : cleanName);
+          ? 'DOViD_${entry.platform}_$stamp'
+          : '${cleanName.length > 42 ? cleanName.substring(0, 42) : cleanName}_$stamp';
       final ext = isAudio ? 'mp3' : 'mp4';
 
-      Directory targetDir = Directory('/storage/emulated/0/Download');
-      if (!await targetDir.exists()) {
-        targetDir = Directory.systemTemp;
-      }
-
+      final targetDir = await _resolveWritableDirectory();
       final filePath = '${targetDir.path}/$safeBase.$ext';
       final file = File(filePath);
-      final sink = file.openWrite();
+      sink = file.openWrite();
 
       final totalBytes = res.contentLength;
+      task.totalBytes = totalBytes > 0 ? totalBytes : 0;
       int received = 0;
+      final sw = Stopwatch()..start();
+      int lastTickMs = 0;
 
       await for (final chunk in res) {
+        if (task.isCanceled) {
+          await sink.close();
+          if (await file.exists()) await file.delete();
+          client.close();
+          AppState().removeActiveTask(entry.id);
+          return null;
+        }
+
         sink.add(chunk);
         received += chunk.length;
+        task.receivedBytes = received;
+
         if (totalBytes > 0) {
-          onProgress((received / totalBytes).clamp(0.0, 1.0));
+          task.progress = (received / totalBytes).clamp(0.0, 1.0);
+        } else {
+          // تقدم تقديري سلس إذا لم يرسل السيرفر Content-Length
+          task.progress = (1.0 - (1.0 / (1.0 + received / (1024 * 1024 * 4))))
+              .clamp(0.05, 0.95);
+        }
+
+        final nowMs = sw.elapsedMilliseconds;
+        if (nowMs - lastTickMs >= 180) {
+          lastTickMs = nowMs;
+          final elapsedSec = nowMs / 1000.0;
+          if (elapsedSec > 0) {
+            task.speedKBps = (received / 1024.0) / elapsedSec;
+          }
+          AppState().updateActiveTask(task);
+          onTaskUpdate?.call(task);
         }
       }
 
       await sink.flush();
       await sink.close();
       client.close();
+
+      task.progress = 1.0;
+      task.status = 'completed';
+      final finalSize = formatBytes(received);
+      await AppState().updateDownload(
+        entry,
+        localPath: filePath,
+        fileSizeText: finalSize,
+      );
+      AppState().removeActiveTask(entry.id);
+      onTaskUpdate?.call(task);
       return filePath;
     } catch (_) {
+      try {
+        await sink?.close();
+      } catch (_) {}
+      client?.close();
+      task.status = 'failed';
+      AppState().removeActiveTask(entry.id);
       return null;
     }
   }
@@ -1343,7 +1906,7 @@ class _AuthScreenState extends State<AuthScreen> {
       error = null;
       loading = true;
     });
-    await Future.delayed(const Duration(milliseconds: 280));
+    await Future.delayed(const Duration(milliseconds: 240));
     final s = AppState();
     final err = isRegister
         ? s.register(userCtrl.text.trim(), passCtrl.text,
@@ -1371,12 +1934,12 @@ class _AuthScreenState extends State<AuthScreen> {
                 constraints: const BoxConstraints(maxWidth: 420),
                 padding: const EdgeInsets.all(26),
                 decoration: BoxDecoration(
-                  color: AppColors.surface.withOpacity(0.92),
+                  color: AppColors.surface.withOpacity(0.94),
                   borderRadius: BorderRadius.circular(24),
                   border: Border.all(color: AppColors.border),
                   boxShadow: const [
                     BoxShadow(
-                        color: Color(0x44000000),
+                        color: Color(0x55000000),
                         blurRadius: 40,
                         offset: Offset(0, 16))
                   ],
@@ -1396,8 +1959,8 @@ class _AuthScreenState extends State<AuthScreen> {
                         borderRadius: BorderRadius.circular(24),
                         boxShadow: [
                           BoxShadow(
-                              color: accent.withOpacity(0.4),
-                              blurRadius: 36,
+                              color: accent.withOpacity(0.35),
+                              blurRadius: 28,
                               offset: const Offset(0, 10))
                         ],
                       ),
@@ -1427,7 +1990,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     ),
                     const SizedBox(height: 5),
                     const Text(
-                      'DOViD v5.0 Pro - نظام التحميل الذكي المتكامل',
+                      '$kAppName $kAppVersion - استوديو التحميل والمعاينة الذكي',
                       style:
                           TextStyle(fontSize: 11.5, color: AppColors.textMuted),
                     ),
@@ -1573,8 +2136,8 @@ class _ErrorBanner extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.error.withOpacity(0.1),
-        border: Border.all(color: AppColors.error.withOpacity(0.3)),
+        color: AppColors.error.withOpacity(0.12),
+        border: Border.all(color: AppColors.error.withOpacity(0.35)),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(children: [
@@ -1615,9 +2178,9 @@ class _PrimaryButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
             boxShadow: [
               BoxShadow(
-                  color: accent.withOpacity(0.35),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8))
+                  color: accent.withOpacity(0.3),
+                  blurRadius: 18,
+                  offset: const Offset(0, 6))
             ],
           ),
           child: loading
@@ -1648,7 +2211,7 @@ class _PrimaryButton extends StatelessWidget {
 }
 
 // ============================================================================
-// MAIN SCREEN (with Floating Glassmorphic Bottom Nav)
+// MAIN SCREEN (with Studio, History, Settings & Admin)
 // ============================================================================
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -1669,12 +2232,15 @@ class _MainScreenState extends State<MainScreen> {
 
         final pages = <Widget>[
           const HomeScreen(),
+          const StudioScreen(),
           const HistoryScreen(),
           const SettingsScreen(),
           if (isAdmin) const AdminScreen(),
         ];
         final items = <_NavItem>[
           _NavItem(Icons.home_rounded, 'الرئيسية'),
+          _NavItem(Icons.video_library_rounded, 'الاستوديو',
+              badgeCount: s.savedDeviceFiles.length),
           _NavItem(Icons.history_rounded, 'السجل'),
           _NavItem(Icons.settings_rounded, 'الإعدادات'),
           if (isAdmin)
@@ -1689,26 +2255,33 @@ class _MainScreenState extends State<MainScreen> {
             children: [
               const _AnimatedBackground(),
               SafeArea(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 280),
-                  child: KeyedSubtree(
-                    key: ValueKey<int>(_tab),
-                    child: pages[_tab],
-                  ),
+                child: Column(
+                  children: [
+                    if (s.activeTasks.isNotEmpty) _ActiveDownloadsBanner(),
+                    Expanded(
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 240),
+                        child: KeyedSubtree(
+                          key: ValueKey<int>(_tab),
+                          child: pages[_tab],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
           bottomNavigationBar: Container(
             decoration: BoxDecoration(
-              color: AppColors.surface.withOpacity(0.94),
+              color: AppColors.surface.withOpacity(0.96),
               border: const Border(top: BorderSide(color: AppColors.border)),
             ),
             child: SafeArea(
               top: false,
               child: Padding(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: List.generate(items.length, (i) {
@@ -1720,25 +2293,52 @@ class _MainScreenState extends State<MainScreen> {
                         onTap: () => setState(() => _tab = i),
                         borderRadius: BorderRadius.circular(16),
                         child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 220),
+                          duration: const Duration(milliseconds: 200),
                           padding: const EdgeInsets.symmetric(vertical: 7),
                           decoration: BoxDecoration(
                             color: active
-                                ? color.withOpacity(0.14)
+                                ? color.withOpacity(0.15)
                                 : Colors.transparent,
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(it.icon,
-                                  size: 22,
-                                  color: active ? color : AppColors.textMuted),
+                              Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  Icon(it.icon,
+                                      size: 22,
+                                      color:
+                                          active ? color : AppColors.textMuted),
+                                  if (it.badgeCount > 0)
+                                    Positioned(
+                                      top: -4,
+                                      left: -8,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 5, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: s.accentColor,
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                        ),
+                                        child: Text(
+                                          '${it.badgeCount}',
+                                          style: const TextStyle(
+                                              fontSize: 8.5,
+                                              fontWeight: FontWeight.w900,
+                                              color: Colors.white),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
                               const SizedBox(height: 3),
                               Text(
                                 it.label,
                                 style: TextStyle(
-                                    fontSize: 10.5,
+                                    fontSize: 10,
                                     fontWeight: FontWeight.w800,
                                     color:
                                         active ? color : AppColors.textMuted),
@@ -1763,7 +2363,73 @@ class _NavItem {
   final IconData icon;
   final String label;
   final bool admin;
-  _NavItem(this.icon, this.label, {this.admin = false});
+  final int badgeCount;
+  _NavItem(this.icon, this.label, {this.admin = false, this.badgeCount = 0});
+}
+
+class _ActiveDownloadsBanner extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final s = AppState();
+    final tasks = s.activeTasks.values.toList();
+    if (tasks.isEmpty) return const SizedBox.shrink();
+    final t = tasks.first;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: s.accentColor.withOpacity(0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: s.accentColor),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'جاري التنزيل: ${t.title}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 11.5, fontWeight: FontWeight.w800),
+                ),
+              ),
+              Text(
+                '${t.speedKBps.toStringAsFixed(0)} KB/s',
+                style: const TextStyle(
+                    fontSize: 10,
+                    color: AppColors.success,
+                    fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(width: 8),
+              InkWell(
+                onTap: () => s.cancelTask(t.entryId),
+                child: const Icon(Icons.close,
+                    size: 16, color: AppColors.error),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          LinearProgressIndicator(
+            value: t.progress,
+            backgroundColor: AppColors.bg,
+            color: s.accentColor,
+            minHeight: 5,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ============================================================================
@@ -1802,27 +2468,27 @@ class _AnimatedBackgroundState extends State<_AnimatedBackground>
         return Stack(children: [
           Container(color: AppColors.bg),
           Positioned(
-            top: -190 + sin(t) * 45,
-            right: -140 + cos(t) * 45,
+            top: -190 + sin(t) * 40,
+            right: -140 + cos(t) * 40,
             child: Container(
-              width: 500,
-              height: 500,
+              width: 480,
+              height: 480,
               decoration: BoxDecoration(
                 gradient: RadialGradient(
-                  colors: [accent.withOpacity(0.14), Colors.transparent],
+                  colors: [accent.withOpacity(0.11), Colors.transparent],
                 ),
               ),
             ),
           ),
           Positioned(
-            bottom: -150 + cos(t) * 35,
-            left: -150 + sin(t) * 35,
+            bottom: -150 + cos(t) * 30,
+            left: -150 + sin(t) * 30,
             child: Container(
-              width: 420,
-              height: 420,
+              width: 400,
+              height: 400,
               decoration: const BoxDecoration(
                 gradient: RadialGradient(
-                  colors: [Color(0x168B5CF6), Colors.transparent],
+                  colors: [Color(0x148B5CF6), Colors.transparent],
                 ),
               ),
             ),
@@ -1834,7 +2500,7 @@ class _AnimatedBackgroundState extends State<_AnimatedBackground>
 }
 
 // ============================================================================
-// HOME SCREEN
+// HOME SCREEN (Smart Preview, Batch Mode, Auto Clipboard & Instant Download)
 // ============================================================================
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -1846,31 +2512,78 @@ class _HomeScreenState extends State<HomeScreen> {
   final urlCtrl = TextEditingController();
   late String quality;
   bool loading = false;
-  bool savingToDevice = false;
-  double saveProgress = 0.0;
+  bool previewLoading = false;
+  bool batchMode = false;
   String? error;
   DownloadEntry? result;
+  Map<String, String>? quickPreview;
   String loadingText = 'جاري الاتصال بالسيرفر الذكي...';
   String currentStrategy = 'direct_post_json';
+  String? detectedClipboardLink;
+  Timer? _debounce;
 
   final qualities = const [
-    {'key': 'auto', 'label': 'تلقائي', 'icon': Icons.auto_awesome},
-    {'key': '4k', 'label': '4K Ultra', 'icon': Icons.star},
+    {'key': 'auto', 'label': 'تلقائي ذكي', 'icon': Icons.auto_awesome},
+    {'key': '4k', 'label': '4K Ultra HD', 'icon': Icons.hd},
     {'key': '1080', 'label': 'FHD 1080p', 'icon': Icons.tv},
     {'key': '720', 'label': 'HD 720p', 'icon': Icons.phone_android},
-    {'key': 'audio', 'label': 'صوت MP3', 'icon': Icons.music_note},
+    {'key': 'audio', 'label': 'صوت MP3 نقي', 'icon': Icons.music_note},
   ];
 
   @override
   void initState() {
     super.initState();
     quality = AppState().defaultQuality;
+    if (AppState().autoDetectClipboard) {
+      _checkClipboardForLink();
+    }
   }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     urlCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkClipboardForLink() async {
+    try {
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      final txt = data?.text?.trim() ?? '';
+      if (txt.startsWith('http') &&
+          detectPlatform(txt) != 'unknown' &&
+          txt != urlCtrl.text.trim()) {
+        if (!mounted) return;
+        setState(() => detectedClipboardLink = txt);
+      }
+    } catch (_) {}
+  }
+
+  void _onUrlChanged(String val) {
+    setState(() {});
+    _debounce?.cancel();
+    final clean = val.trim();
+    if (!batchMode && clean.startsWith('http') && clean.length > 12) {
+      _debounce = Timer(const Duration(milliseconds: 500), () {
+        _triggerQuickPreview(clean);
+      });
+    } else {
+      setState(() => quickPreview = null);
+    }
+  }
+
+  Future<void> _triggerQuickPreview(String url) async {
+    if (!mounted) return;
+    setState(() => previewLoading = true);
+    final meta = await DownloadService.fetchQuickPreviewMetadata(url);
+    if (!mounted) return;
+    setState(() {
+      previewLoading = false;
+      if ((meta['title'] ?? '').isNotEmpty ||
+          (meta['thumbnail'] ?? '').isNotEmpty) {
+        quickPreview = meta;
+      }
+    });
   }
 
   Future<void> _pasteFromClipboard() async {
@@ -1879,18 +2592,29 @@ class _HomeScreenState extends State<HomeScreen> {
     if (txt.isNotEmpty) {
       setState(() {
         urlCtrl.text = txt;
+        detectedClipboardLink = null;
         error = null;
       });
+      _onUrlChanged(txt);
     }
   }
 
   Future<void> _download() async {
-    final url = urlCtrl.text.trim();
-    if (url.isEmpty) {
-      setState(() => error = 'يرجى إدخال رابط الفيديو أولاً');
+    final rawText = urlCtrl.text.trim();
+    if (rawText.isEmpty) {
+      setState(() => error = 'يرجى لصق رابط الفيديو أولاً');
       return;
     }
-    if (!url.startsWith('http')) {
+
+    final urls = batchMode
+        ? rawText
+            .split(RegExp(r'[\r\n]+'))
+            .map((s) => s.trim())
+            .where((s) => s.startsWith('http'))
+            .toList()
+        : [rawText];
+
+    if (urls.isEmpty || !urls.first.startsWith('http')) {
       setState(() => error = 'الرابط غير صالح، يجب أن يبدأ بـ http أو https');
       return;
     }
@@ -1904,76 +2628,117 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     final s = AppState();
-    final entry = await s.addDownload(url, quality);
+    DownloadEntry? lastSuccess;
 
-    final response = await DownloadService.download(
-      url,
-      quality: quality,
-      onStrategyTrying: (st) {
-        if (!mounted) return;
-        setState(() {
-          currentStrategy = st;
-          loadingText = 'محاولة الاستخراج عبر: $st';
-        });
-      },
-    );
+    for (int idx = 0; idx < urls.length; idx++) {
+      final currentUrl = urls[idx];
+      final entry = await s.addDownload(currentUrl, quality);
+
+      final response = await DownloadService.download(
+        currentUrl,
+        quality: quality,
+        onStrategyTrying: (st) {
+          if (!mounted) return;
+          setState(() {
+            currentStrategy = st;
+            loadingText = urls.length > 1
+                ? 'جاري استخراج (${idx + 1}/${urls.length}) عبر: $st'
+                : 'محاولة الاستخراج عبر المحرك: $st';
+          });
+        },
+      );
+
+      if (!mounted) return;
+
+      if (response['status'] == 'success') {
+        final link = (response['answer'] ?? response['url'] ?? '').toString();
+        final hdLink = (response['hdLink'] ?? link).toString();
+        final audioLink = (response['audioLink'] ?? '').toString();
+        final title =
+            (response['title'] ?? quickPreview?['title'] ?? 'فيديو ${entry.platform}')
+                .toString();
+        final author =
+            (response['author'] ?? quickPreview?['author'] ?? '').toString();
+        final thumb =
+            (response['thumbnail'] ?? quickPreview?['thumbnail'] ?? '')
+                .toString();
+        final duration = (response['duration'] ?? '').toString();
+        final fileSize = (response['fileSize'] ?? '').toString();
+        final strategy = (response['strategy'] ?? 'direct').toString();
+
+        await s.updateDownload(
+          entry,
+          title: title,
+          author: author,
+          thumbnailUrl: thumb,
+          durationText: duration,
+          fileSizeText: fileSize,
+          link: link,
+          hdLink: hdLink,
+          audioLink: audioLink,
+          status: 'success',
+          strategy: strategy,
+        );
+        lastSuccess = entry;
+
+        if (s.autoSaveAfterExtract) {
+          _saveVideoFile(entry, isAudio: quality == 'audio');
+        }
+      } else {
+        await s.updateDownload(entry, status: 'failed');
+        if (urls.length == 1) {
+          setState(() {
+            loading = false;
+            error = (response['message'] ?? 'فشل جلب الرابط، حاول مرة أخرى')
+                .toString();
+          });
+          return;
+        }
+      }
+    }
 
     if (!mounted) return;
-
-    if (response['status'] == 'success') {
-      final link = (response['answer'] ?? response['url'] ?? '').toString();
-      final title = (response['title'] ?? 'فيديو ${entry.platform}').toString();
-      final strategy = (response['strategy'] ?? 'direct').toString();
-      await s.updateDownload(entry,
-          title: title, link: link, status: 'success', strategy: strategy);
-      if (!mounted) return;
-      setState(() {
-        result = entry;
-        loading = false;
-      });
-    } else {
-      await s.updateDownload(entry, status: 'failed');
-      if (!mounted) return;
-      setState(() {
-        loading = false;
-        error = (response['message'] ?? 'فشل جلب الرابط، حاول مرة أخرى')
-            .toString();
-      });
-    }
+    setState(() {
+      result = lastSuccess;
+      loading = false;
+    });
   }
 
-  Future<void> _saveVideoFile(DownloadEntry e) async {
-    if (savingToDevice) return;
-    setState(() {
-      savingToDevice = true;
-      saveProgress = 0.02;
-    });
+  Future<void> _saveVideoFile(
+    DownloadEntry e, {
+    bool isAudio = false,
+    String? customUrl,
+  }) async {
+    if (AppState().activeTasks.containsKey(e.id)) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+            'بدأ تنزيل ${isAudio ? "الملف الصوتي MP3" : "الفيديو MP4"} إلى ذاكرة الهاتف...'),
+        backgroundColor: AppState().accentColor,
+        duration: const Duration(seconds: 2),
+      ),
+    );
 
     final savedPath = await DownloadService.downloadFileToDevice(
-      url: e.downloadLink,
-      filename: e.title.isEmpty ? 'DOViD_${e.platform}' : e.title,
-      platform: e.platform,
-      isAudio: e.quality == 'audio',
-      onProgress: (p) {
-        if (!mounted) return;
-        setState(() => saveProgress = p);
-      },
+      entry: e,
+      isAudio: isAudio,
+      overrideUrl: customUrl,
     );
 
     if (!mounted) return;
-    setState(() => savingToDevice = false);
 
     if (savedPath != null) {
-      await AppState().updateDownload(e, localPath: savedPath);
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('تم حفظ الملف بنجاح في: $savedPath'),
+          content: Text('✅ تم حفظ الملف في جهازك بنجاح:\n$savedPath'),
           backgroundColor: AppColors.success,
+          duration: const Duration(seconds: 4),
         ),
       );
     } else {
-      final uri = Uri.tryParse(e.downloadLink);
+      final fallbackUrl = customUrl ?? e.downloadLink;
+      final uri = Uri.tryParse(fallbackUrl);
       if (uri != null) {
         try {
           await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -1995,6 +2760,69 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.all(14),
           children: [
             _AppHeader(),
+            // Clipboard Smart Radar
+            if (detectedClipboardLink != null)
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: accent.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: accent.withOpacity(0.35)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.auto_awesome_motion,
+                        color: accent, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'تم اكتشاف رابط ${detectPlatform(detectedClipboardLink!).toUpperCase()} في الحافظة!',
+                            style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w800,
+                                color: accent),
+                          ),
+                          Text(
+                            detectedClipboardLink!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 10, color: AppColors.textMuted),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () {
+                        final link = detectedClipboardLink!;
+                        setState(() {
+                          urlCtrl.text = link;
+                          detectedClipboardLink = null;
+                        });
+                        _onUrlChanged(link);
+                        _download();
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: accent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        minimumSize: Size.zero,
+                      ),
+                      child: const Text('لصق وتحميل',
+                          style: TextStyle(
+                              fontSize: 11, fontWeight: FontWeight.w800)),
+                    ),
+                  ],
+                ),
+              ),
+
             Row(children: [
               Expanded(
                   child: _StatCard(
@@ -2010,9 +2838,9 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(width: 10),
               Expanded(
                   child: _StatCard(
-                      label: 'فاشل',
-                      value: s.failedDownloads,
-                      color: AppColors.error)),
+                      label: 'محفوظ بالهاتف',
+                      value: s.savedDeviceFiles.length,
+                      color: AppColors.guest)),
             ]),
             const SizedBox(height: 14),
             Container(
@@ -2040,35 +2868,69 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
                           Icon(Icons.bolt, color: accent, size: 13),
                           const SizedBox(width: 4),
-                          Text('DOViD Pro v5.0',
+                          Text('$kAppName $kAppVersion',
                               style: TextStyle(
                                   color: accent,
                                   fontSize: 11,
                                   fontWeight: FontWeight.w800)),
                         ]),
                       ),
-                      const Row(children: [
-                        Icon(Icons.verified_user,
-                            color: AppColors.success, size: 13),
-                        SizedBox(width: 4),
-                        Text('6 محركات تخطي',
-                            style: TextStyle(
-                                fontSize: 10, color: AppColors.textMuted)),
-                      ]),
+                      InkWell(
+                        onTap: () => setState(() => batchMode = !batchMode),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: batchMode
+                                ? AppColors.admin.withOpacity(0.18)
+                                : AppColors.surfaceLight,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: batchMode
+                                  ? AppColors.admin
+                                  : AppColors.border,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.dynamic_feed,
+                                  size: 13,
+                                  color: batchMode
+                                      ? AppColors.admin
+                                      : AppColors.textMuted),
+                              const SizedBox(width: 4),
+                              Text(
+                                batchMode ? 'تحميل متعدد (نشط)' : 'تحميل متعدد',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: batchMode
+                                      ? AppColors.admin
+                                      : AppColors.textMuted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 14),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
                         child: TextField(
                           controller: urlCtrl,
+                          maxLines: batchMode ? 4 : 1,
                           style: const TextStyle(
                               color: AppColors.text, fontSize: 13),
                           textDirection: TextDirection.ltr,
                           decoration: InputDecoration(
-                            hintText:
-                                'الصق رابط الفيديو (YouTube, TikTok, Instagram...)',
+                            hintText: batchMode
+                                ? 'ضع كل رابط فيديو في سطر مستقل لتحميلها دفعة واحدة...'
+                                : 'الصق رابط الفيديو (YouTube, TikTok, Instagram...)',
                             hintStyle: const TextStyle(
                                 color: AppColors.textDim, fontSize: 11.5),
                             prefixIcon:
@@ -2080,6 +2942,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         size: 16, color: AppColors.textMuted),
                                     onPressed: () => setState(() {
                                       urlCtrl.clear();
+                                      quickPreview = null;
                                       result = null;
                                       error = null;
                                     }),
@@ -2101,7 +2964,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 borderSide:
                                     BorderSide(color: accent, width: 1.5)),
                           ),
-                          onChanged: (_) => setState(() {}),
+                          onChanged: _onUrlChanged,
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -2131,6 +2994,29 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ],
                   ),
+
+                  // Instant Live Preview Card before clicking download
+                  if (previewLoading)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 10),
+                      child: LinearProgressIndicator(minHeight: 2),
+                    ),
+                  if (quickPreview != null && result == null) ...[
+                    const SizedBox(height: 12),
+                    _InstantLinkPreviewBanner(
+                      meta: quickPreview!,
+                      onQuickInspect: () => _showVideoPreviewModal(
+                        context,
+                        title: quickPreview!['title'] ?? 'معاينة الفيديو',
+                        author: quickPreview!['author'] ?? '',
+                        thumbnailUrl: quickPreview!['thumbnail'] ?? '',
+                        sourceUrl: urlCtrl.text.trim(),
+                        streamUrl: '',
+                        platform: quickPreview!['platform'] ?? 'unknown',
+                      ),
+                    ),
+                  ],
+
                   const SizedBox(height: 12),
                   SizedBox(
                     height: 40,
@@ -2186,7 +3072,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 14),
                   _PrimaryButton(
-                    label: 'تحميل الفيديو الآن',
+                    label: batchMode
+                        ? 'بدء استخراج وتحميل القائمة'
+                        : 'استخراج ومعاينة الفيديو الآن',
                     icon: Icons.download_rounded,
                     loading: loading,
                     onTap: _download,
@@ -2204,7 +3092,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700)),
                         const SizedBox(height: 4),
-                        Text('الاستراتيجية: $currentStrategy',
+                        Text('المحرك النشط: $currentStrategy',
                             style: const TextStyle(
                                 color: AppColors.textDim, fontSize: 10)),
                       ]),
@@ -2215,12 +3103,31 @@ class _HomeScreenState extends State<HomeScreen> {
                     _ErrorBanner(message: error!),
                   ],
                   if (result != null && result!.downloadLink.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    _ResultCard(
+                    const SizedBox(height: 16),
+                    _RichResultPreviewCard(
                       entry: result!,
-                      saving: savingToDevice,
-                      progress: saveProgress,
-                      onSaveToDevice: () => _saveVideoFile(result!),
+                      onDownloadVideo: () =>
+                          _saveVideoFile(result!, isAudio: false),
+                      onDownloadHd: () => _saveVideoFile(
+                        result!,
+                        isAudio: false,
+                        customUrl: result!.hdLink.isNotEmpty
+                            ? result!.hdLink
+                            : result!.downloadLink,
+                      ),
+                      onDownloadAudio: () =>
+                          _saveVideoFile(result!, isAudio: true),
+                      onOpenPreviewModal: () => _showVideoPreviewModal(
+                        context,
+                        title: result!.title,
+                        author: result!.author,
+                        thumbnailUrl: result!.thumbnailUrl,
+                        sourceUrl: result!.url,
+                        streamUrl: result!.downloadLink,
+                        platform: result!.platform,
+                        duration: result!.durationText,
+                        fileSize: result!.fileSizeText,
+                      ),
                     ),
                   ],
                 ],
@@ -2237,7 +3144,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('المنصات المدعومة بالكامل',
+                  const Text('المنصات المدعومة بالمعاينة والتحميل المباشر',
                       style:
                           TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
                   const SizedBox(height: 14),
@@ -2266,7 +3173,22 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(height: 14),
-            if (s.myDownloads.isNotEmpty) _RecentDownloads(),
+            if (s.myDownloads.isNotEmpty)
+              _RecentDownloads(
+                onDownloadTap: (e) =>
+                    _saveVideoFile(e, isAudio: e.quality == 'audio'),
+                onPreviewTap: (e) => _showVideoPreviewModal(
+                  context,
+                  title: e.title,
+                  author: e.author,
+                  thumbnailUrl: e.thumbnailUrl,
+                  sourceUrl: e.url,
+                  streamUrl: e.downloadLink,
+                  platform: e.platform,
+                  duration: e.durationText,
+                  fileSize: e.fileSizeText,
+                ),
+              ),
             const SizedBox(height: 20),
           ],
         );
@@ -2275,148 +3197,655 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _ResultCard extends StatelessWidget {
-  final DownloadEntry entry;
-  final bool saving;
-  final double progress;
-  final VoidCallback onSaveToDevice;
-  const _ResultCard({
-    required this.entry,
-    required this.saving,
-    required this.progress,
-    required this.onSaveToDevice,
+class _InstantLinkPreviewBanner extends StatelessWidget {
+  final Map<String, String> meta;
+  final VoidCallback onQuickInspect;
+  const _InstantLinkPreviewBanner({
+    required this.meta,
+    required this.onQuickInspect,
   });
 
   @override
   Widget build(BuildContext context) {
+    final thumb = meta['thumbnail'] ?? '';
+    final title = meta['title'] ?? '';
+    final author = meta['author'] ?? '';
+    final platform = meta['platform'] ?? 'unknown';
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: AppColors.success.withOpacity(0.08),
-        border: Border.all(color: AppColors.success.withOpacity(0.25)),
-        borderRadius: BorderRadius.circular(16),
+        color: AppColors.surfaceLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(children: [
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: AppColors.success,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                      color: AppColors.success.withOpacity(0.4),
-                      blurRadius: 14)
-                ],
-              ),
-              child: const Icon(Icons.check, color: Colors.white, size: 16),
-            ),
-            const SizedBox(width: 10),
-            const Text('تم استخراج الرابط المباشر بنجاح!',
-                style: TextStyle(
-                    color: AppColors.success,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13)),
-          ]),
-          const SizedBox(height: 10),
-          Text(
-            entry.title.isEmpty ? 'فيديو ${entry.platform}' : entry.title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: thumb.isNotEmpty
+                ? Image.network(
+                    thumb,
+                    width: 72,
+                    height: 52,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 72,
+                      height: 52,
+                      color: AppColors.surfaceLighter,
+                      child: Icon(platformIcon(platform),
+                          color: platformColor(platform)),
+                    ),
+                  )
+                : Container(
+                    width: 72,
+                    height: 52,
+                    color: AppColors.surfaceLighter,
+                    child: Icon(platformIcon(platform),
+                        color: platformColor(platform)),
+                  ),
           ),
-          const SizedBox(height: 8),
-          Wrap(spacing: 10, children: [
-            _Tag(Icons.video_file, entry.platform, AppState().accentColor),
-            _Tag(Icons.diamond, entry.quality, AppColors.success),
-            _Tag(Icons.route, entry.strategy, AppColors.textMuted),
-          ]),
-          if (saving) ...[
-            const SizedBox(height: 12),
-            LinearProgressIndicator(
-              value: progress,
-              backgroundColor: AppColors.surfaceLight,
-              color: AppColors.success,
-              minHeight: 6,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'جاري التنزيل إلى الهاتف... ${(progress * 100).toStringAsFixed(0)}%',
-              style: const TextStyle(fontSize: 11, color: AppColors.success),
-            ),
-          ],
-          const SizedBox(height: 12),
-          Row(children: [
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: saving ? null : onSaveToDevice,
-                icon: const Icon(Icons.download_rounded,
-                    size: 16, color: Colors.black),
-                label: Text(
-                  saving ? 'جاري الحفظ...' : 'تنزيل وحفظ بالهاتف',
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: platformColor(platform).withOpacity(0.16),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'معاينة فورية • ${platform.toUpperCase()}',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: platformColor(platform),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  title.isEmpty ? 'الرابط جاهز للاستخراج والتحميل' : title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      color: Colors.black,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 12),
+                      fontSize: 12, fontWeight: FontWeight.w800),
                 ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                ),
-              ),
+                if (author.isNotEmpty)
+                  Text(
+                    'القناة / الحساب: $author',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 10, color: AppColors.textMuted),
+                  ),
+              ],
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(text: entry.downloadLink));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('تم نسخ الرابط المباشر'),
-                        backgroundColor: AppColors.success),
-                  );
-                },
-                icon: const Icon(Icons.copy, size: 14),
-                label:
-                    const Text('نسخ الرابط', style: TextStyle(fontSize: 12)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.text,
-                  side: const BorderSide(color: AppColors.border),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                ),
-              ),
-            ),
-          ]),
+          ),
+          IconButton(
+            onPressed: onQuickInspect,
+            icon: const Icon(Icons.visibility_outlined,
+                size: 18, color: AppColors.textMuted),
+            tooltip: 'معاينة التفاصيل',
+          ),
         ],
       ),
     );
   }
 }
 
-class _Tag extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  final Color color;
-  const _Tag(this.icon, this.text, this.color);
+class _RichResultPreviewCard extends StatelessWidget {
+  final DownloadEntry entry;
+  final VoidCallback onDownloadVideo;
+  final VoidCallback onDownloadHd;
+  final VoidCallback onDownloadAudio;
+  final VoidCallback onOpenPreviewModal;
+
+  const _RichResultPreviewCard({
+    required this.entry,
+    required this.onDownloadVideo,
+    required this.onDownloadHd,
+    required this.onDownloadAudio,
+    required this.onOpenPreviewModal,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      Icon(icon, size: 11, color: color),
-      const SizedBox(width: 3),
-      Text(text,
-          style: TextStyle(
-              fontSize: 10.5, color: color, fontWeight: FontWeight.w700)),
-    ]);
+    final s = AppState();
+    final activeTask = s.activeTasks[entry.id];
+    final isDownloading = activeTask != null;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLight,
+        border: Border.all(color: AppColors.success.withOpacity(0.35)),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Interactive Thumbnail Banner with Play Preview Overlay
+          GestureDetector(
+            onTap: onOpenPreviewModal,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                if (entry.thumbnailUrl.isNotEmpty)
+                  Image.network(
+                    entry.thumbnailUrl,
+                    width: double.infinity,
+                    height: 185,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _FallbackThumbBanner(
+                        platform: entry.platform),
+                  )
+                else
+                  _FallbackThumbBanner(platform: entry.platform),
+                Container(
+                  width: double.infinity,
+                  height: 185,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0x99000000), Color(0x22000000), Color(0xCC000000)],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                  ),
+                ),
+                // Play Preview Button
+                Container(
+                  width: 58,
+                  height: 58,
+                  decoration: BoxDecoration(
+                    color: s.accentColor.withOpacity(0.9),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: s.accentColor.withOpacity(0.5),
+                        blurRadius: 20,
+                      )
+                    ],
+                  ),
+                  child: const Icon(Icons.play_arrow_rounded,
+                      color: Colors.white, size: 34),
+                ),
+                Positioned(
+                  top: 10,
+                  right: 10,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.success,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.check_circle, color: Colors.white, size: 13),
+                        SizedBox(width: 4),
+                        Text('جاهز للمعاينة والتنزيل',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800)),
+                      ],
+                    ),
+                  ),
+                ),
+                if (entry.durationText.isNotEmpty)
+                  Positioned(
+                    bottom: 10,
+                    left: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        entry.durationText,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ),
+                Positioned(
+                  bottom: 10,
+                  right: 10,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black87,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.visibility, color: Colors.white, size: 12),
+                        SizedBox(width: 4),
+                        Text('اضغط لمعاينة وتشغيل الفيديو',
+                            style:
+                                TextStyle(color: Colors.white, fontSize: 10)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        entry.title.isEmpty
+                            ? 'فيديو ${entry.platform}'
+                            : entry.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 13.5),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => s.toggleFavorite(entry),
+                      icon: Icon(
+                        entry.isFavorite
+                            ? Icons.bookmark_rounded
+                            : Icons.bookmark_border_rounded,
+                        color: entry.isFavorite
+                            ? AppColors.warning
+                            : AppColors.textMuted,
+                      ),
+                      tooltip: 'حفظ في المفضلة',
+                    ),
+                  ],
+                ),
+                if (entry.author.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    'الناشر: ${entry.author}',
+                    style: const TextStyle(
+                        fontSize: 11, color: AppColors.textMuted),
+                  ),
+                ],
+                const SizedBox(height: 8),
+                Wrap(spacing: 8, runSpacing: 6, children: [
+                  _MiniTag(entry.platform.toUpperCase(),
+                      platformColor(entry.platform)),
+                  _MiniTag(entry.quality.toUpperCase(), AppColors.success),
+                  if (entry.fileSizeText.isNotEmpty)
+                    _MiniTag(entry.fileSizeText, AppColors.guest),
+                  _MiniTag(entry.strategy, AppColors.textMuted),
+                ]),
+
+                if (isDownloading) ...[
+                  const SizedBox(height: 14),
+                  LinearProgressIndicator(
+                    value: activeTask.progress,
+                    backgroundColor: AppColors.bg,
+                    color: AppColors.success,
+                    minHeight: 7,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'جاري الحفظ بالهاتف... ${(activeTask.progress * 100).toStringAsFixed(0)}%',
+                        style: const TextStyle(
+                            fontSize: 11,
+                            color: AppColors.success,
+                            fontWeight: FontWeight.w700),
+                      ),
+                      Text(
+                        '${formatBytes(activeTask.receivedBytes)} • ${activeTask.speedKBps.toStringAsFixed(0)} KB/s',
+                        style: const TextStyle(
+                            fontSize: 10.5, color: AppColors.textMuted),
+                      ),
+                    ],
+                  ),
+                ],
+
+                if (entry.localPath.isNotEmpty && !isDownloading) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: AppColors.success.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.folder_special,
+                            size: 15, color: AppColors.success),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'محفوظ على الهاتف: ${entry.localPath}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 10, color: AppColors.success),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 14),
+                // Primary Download Buttons Row
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton.icon(
+                        onPressed: isDownloading ? null : onDownloadHd,
+                        icon: const Icon(Icons.download_rounded,
+                            size: 17, color: Colors.black),
+                        label: Text(
+                          isDownloading
+                              ? 'جاري التنزيل...'
+                              : 'تنزيل الفيديو MP4 HD',
+                          style: const TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 12),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(11)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: isDownloading ? null : onDownloadAudio,
+                        icon: const Icon(Icons.music_note,
+                            size: 15, color: Colors.white),
+                        label: const Text(
+                          'صوت MP3',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 11.5),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: s.accentColor,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(11)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // Secondary Preview & Copy Actions
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: onOpenPreviewModal,
+                        icon: const Icon(Icons.play_circle_outline, size: 15),
+                        label: const Text('معاينة وتشغيل مباشر',
+                            style: TextStyle(fontSize: 11.5)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.text,
+                          side: const BorderSide(color: AppColors.border),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Clipboard.setData(
+                              ClipboardData(text: entry.downloadLink));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('تم نسخ الرابط المباشر للفيديو'),
+                                backgroundColor: AppColors.success),
+                          );
+                        },
+                        icon: const Icon(Icons.copy, size: 14),
+                        label: const Text('نسخ الرابط المباشر',
+                            style: TextStyle(fontSize: 11.5)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.text,
+                          side: const BorderSide(color: AppColors.border),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
+}
+
+class _FallbackThumbBanner extends StatelessWidget {
+  final String platform;
+  const _FallbackThumbBanner({required this.platform});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = platformColor(platform);
+    return Container(
+      width: double.infinity,
+      height: 185,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            c.withOpacity(0.28),
+            AppColors.surface,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: Icon(platformIcon(platform),
+            size: 56, color: c.withOpacity(0.45)),
+      ),
+    );
+  }
+}
+
+/// نافذة المعاينة المتكاملة للفيديو (تشمل الصورة عالية الدقة، بيانات البث، وتشغيل الفيديو في المشغل المدمج أو الخارجي)
+void _showVideoPreviewModal(
+  BuildContext context, {
+  required String title,
+  required String author,
+  required String thumbnailUrl,
+  required String sourceUrl,
+  required String streamUrl,
+  required String platform,
+  String duration = '',
+  String fileSize = '',
+}) {
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: AppColors.surface,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    builder: (ctx) {
+      final accent = AppState().accentColor;
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 44,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.textDim,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Icon(Icons.smart_display_rounded, color: accent, size: 22),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'استوديو معاينة الفيديو المباشر',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  icon: const Icon(Icons.close, size: 20),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  if (thumbnailUrl.isNotEmpty)
+                    Image.network(
+                      thumbnailUrl,
+                      width: double.infinity,
+                      height: 210,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          _FallbackThumbBanner(platform: platform),
+                    )
+                  else
+                    _FallbackThumbBanner(platform: platform),
+                  Container(
+                    width: double.infinity,
+                    height: 210,
+                    color: Colors.black38,
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      final target =
+                          streamUrl.isNotEmpty ? streamUrl : sourceUrl;
+                      final uri = Uri.tryParse(target);
+                      if (uri != null) {
+                        await launchUrl(uri,
+                            mode: LaunchMode.inAppWebView);
+                      }
+                    },
+                    icon: const Icon(Icons.play_arrow_rounded,
+                        color: Colors.white, size: 24),
+                    label: const Text(
+                      'تشغيل الفيديو الآن داخل التطبيق',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 13),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: accent,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              title.isEmpty ? 'فيديو $platform' : title,
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+            ),
+            if (author.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text('القناة / الناشر: $author',
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.textMuted)),
+            ],
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                _MiniTag('المنصة: ${platform.toUpperCase()}',
+                    platformColor(platform)),
+                if (duration.isNotEmpty)
+                  _MiniTag('المدة: $duration', AppColors.api),
+                if (fileSize.isNotEmpty)
+                  _MiniTag('الحجم: $fileSize', AppColors.guest),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      final target =
+                          streamUrl.isNotEmpty ? streamUrl : sourceUrl;
+                      final uri = Uri.tryParse(target);
+                      if (uri != null) {
+                        await launchUrl(uri,
+                            mode: LaunchMode.externalApplication);
+                      }
+                    },
+                    icon: const Icon(Icons.open_in_new, size: 16),
+                    label: const Text('فتح في مشغل الهاتف الخارجي'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.surfaceLighter,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    },
+  );
 }
 
 class _AppHeader extends StatelessWidget {
@@ -2462,8 +3891,8 @@ class _AppHeader extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Container(
-          width: 74,
-          height: 74,
+          width: 72,
+          height: 72,
           decoration: BoxDecoration(
             gradient: LinearGradient(
                 colors: [AppColors.secondary, accent],
@@ -2472,15 +3901,15 @@ class _AppHeader extends StatelessWidget {
             borderRadius: BorderRadius.circular(22),
             boxShadow: [
               BoxShadow(
-                  color: accent.withOpacity(0.4),
-                  blurRadius: 34,
-                  offset: const Offset(0, 10))
+                  color: accent.withOpacity(0.35),
+                  blurRadius: 28,
+                  offset: const Offset(0, 8))
             ],
           ),
           child: const Center(
             child: Text('DV',
                 style: TextStyle(
-                    fontSize: 28,
+                    fontSize: 27,
                     fontWeight: FontWeight.w900,
                     color: Colors.white,
                     letterSpacing: -2)),
@@ -2497,9 +3926,9 @@ class _AppHeader extends StatelessWidget {
                   color: Colors.white,
                   letterSpacing: -1)),
         ),
-        const Text('YOSSEF VID v5.0',
+        const Text('YOSSEF VID $kAppVersion',
             style: TextStyle(
-                fontSize: 11, color: AppColors.textMuted, letterSpacing: 1.5)),
+                fontSize: 11, color: AppColors.textMuted, letterSpacing: 1.2)),
       ]),
     );
   }
@@ -2580,6 +4009,14 @@ class _PlatformIcon extends StatelessWidget {
 }
 
 class _RecentDownloads extends StatelessWidget {
+  final void Function(DownloadEntry entry) onDownloadTap;
+  final void Function(DownloadEntry entry) onPreviewTap;
+
+  const _RecentDownloads({
+    required this.onDownloadTap,
+    required this.onPreviewTap,
+  });
+
   @override
   Widget build(BuildContext context) {
     final s = AppState();
@@ -2598,7 +4035,7 @@ class _RecentDownloads extends StatelessWidget {
             Row(children: [
               Icon(Icons.history, color: s.accentColor, size: 16),
               const SizedBox(width: 6),
-              const Text('آخر التحميلات',
+              const Text('آخر التحميلات والمعاينات',
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
             ]),
             Text('${s.myDownloads.length} عنصر',
@@ -2607,51 +4044,58 @@ class _RecentDownloads extends StatelessWidget {
           ]),
           const SizedBox(height: 12),
           ...recent.map((e) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: platformColor(e.platform).withOpacity(0.1),
-                      border: Border.all(
-                          color: platformColor(e.platform).withOpacity(0.3)),
+                padding: const EdgeInsets.only(bottom: 10),
+                child: InkWell(
+                  onTap: () => onPreviewTap(e),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Row(children: [
+                    ClipRRect(
                       borderRadius: BorderRadius.circular(10),
+                      child: e.thumbnailUrl.isNotEmpty
+                          ? Image.network(
+                              e.thumbnailUrl,
+                              width: 48,
+                              height: 40,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => _SmallPlatformBox(
+                                  platform: e.platform),
+                            )
+                          : _SmallPlatformBox(platform: e.platform),
                     ),
-                    child: Icon(platformIcon(e.platform),
-                        color: platformColor(e.platform), size: 16),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          e.title.isEmpty ? 'فيديو ${e.platform}' : e.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 12, fontWeight: FontWeight.w700),
-                        ),
-                        Text(timeAgo(e.createdAt),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            e.title.isEmpty ? 'فيديو ${e.platform}' : e.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                                fontSize: 10, color: AppColors.textMuted)),
-                      ],
+                                fontSize: 12, fontWeight: FontWeight.w700),
+                          ),
+                          Text(
+                              '${timeAgo(e.createdAt)}${e.fileSizeText.isNotEmpty ? " • ${e.fileSizeText}" : ""}',
+                              style: const TextStyle(
+                                  fontSize: 10, color: AppColors.textMuted)),
+                        ],
+                      ),
                     ),
-                  ),
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: e.status == 'success'
-                          ? AppColors.success
-                          : e.status == 'failed'
-                              ? AppColors.error
-                              : AppColors.warning,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ]),
+                    if (e.downloadLink.isNotEmpty)
+                      IconButton(
+                        onPressed: () => onDownloadTap(e),
+                        icon: Icon(
+                          e.localPath.isNotEmpty
+                              ? Icons.check_circle
+                              : Icons.download_for_offline_outlined,
+                          color: e.localPath.isNotEmpty
+                              ? AppColors.success
+                              : s.accentColor,
+                          size: 20,
+                        ),
+                      ),
+                  ]),
+                ),
               )),
         ],
       ),
@@ -2659,11 +4103,32 @@ class _RecentDownloads extends StatelessWidget {
   }
 }
 
+class _SmallPlatformBox extends StatelessWidget {
+  final String platform;
+  const _SmallPlatformBox({required this.platform});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 48,
+      height: 40,
+      decoration: BoxDecoration(
+        color: platformColor(platform).withOpacity(0.12),
+        border:
+            Border.all(color: platformColor(platform).withOpacity(0.3)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Icon(platformIcon(platform),
+          color: platformColor(platform), size: 18),
+    );
+  }
+}
+
 // ============================================================================
-// HISTORY SCREEN
+// STUDIO SCREEN (Saved Device Files & Active Downloads Manager)
 // ============================================================================
-class HistoryScreen extends StatelessWidget {
-  const HistoryScreen({super.key});
+class StudioScreen extends StatelessWidget {
+  const StudioScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -2671,17 +4136,226 @@ class HistoryScreen extends StatelessWidget {
     return AnimatedBuilder(
       animation: s,
       builder: (context, _) {
-        final list = s.myDownloads;
+        final saved = s.savedDeviceFiles;
+        final favorites = s.myDownloads.where((d) => d.isFavorite).toList();
+
+        return ListView(
+          padding: const EdgeInsets.all(14),
+          children: [
+            Row(
+              children: [
+                Icon(Icons.video_library_rounded, color: s.accentColor),
+                const SizedBox(width: 8),
+                const Text('استوديو الملفات المحفوظة بالهاتف',
+                    style:
+                        TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (saved.isEmpty && favorites.isEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 60),
+                alignment: Alignment.center,
+                child: Column(
+                  children: [
+                    Icon(Icons.folder_open_rounded,
+                        size: 64,
+                        color: AppColors.textDim.withOpacity(0.35)),
+                    const SizedBox(height: 12),
+                    const Text('لا توجد فيديوهات محفوظة على الهاتف بعد',
+                        style: TextStyle(
+                            color: AppColors.textMuted,
+                            fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 4),
+                    const Text(
+                        'اضغط على "تنزيل الفيديو MP4 HD" بعد استخراج أي رابط لحفظه هنا',
+                        textAlign: TextAlign.center,
+                        style:
+                            TextStyle(fontSize: 11, color: AppColors.textDim)),
+                  ],
+                ),
+              ),
+            if (saved.isNotEmpty) ...[
+              Text('تم تنزيلها على جهازك (${saved.length})',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                      color: AppColors.success)),
+              const SizedBox(height: 10),
+              ...saved.map((e) => Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: e.thumbnailUrl.isNotEmpty
+                                  ? Image.network(
+                                      e.thumbnailUrl,
+                                      width: 70,
+                                      height: 52,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          _SmallPlatformBox(
+                                              platform: e.platform),
+                                    )
+                                  : _SmallPlatformBox(platform: e.platform),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    e.title.isEmpty
+                                        ? 'فيديو ${e.platform}'
+                                        : e.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 13),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    e.localPath,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        fontSize: 10, color: AppColors.success),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Wrap(
+                                    spacing: 6,
+                                    children: [
+                                      if (e.fileSizeText.isNotEmpty)
+                                        _MiniTag(
+                                            e.fileSizeText, AppColors.guest),
+                                      _MiniTag(e.quality, AppColors.api),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => _showVideoPreviewModal(
+                                context,
+                                title: e.title,
+                                author: e.author,
+                                thumbnailUrl: e.thumbnailUrl,
+                                sourceUrl: e.url,
+                                streamUrl: e.downloadLink,
+                                platform: e.platform,
+                                duration: e.durationText,
+                                fileSize: e.fileSizeText,
+                              ),
+                              icon: Icon(Icons.play_circle_fill,
+                                  color: s.accentColor, size: 28),
+                            ),
+                            IconButton(
+                              onPressed: () => s.deleteDownloadItem(e.id,
+                                  deleteLocalFile: true),
+                              icon: const Icon(Icons.delete_outline,
+                                  color: AppColors.error, size: 20),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  )),
+            ],
+            if (favorites.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Text('الفيديوهات المفضلة (${favorites.length})',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                      color: AppColors.warning)),
+              const SizedBox(height: 10),
+              ...favorites.map((e) => Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Row(
+                      children: [
+                        _SmallPlatformBox(platform: e.platform),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            e.title.isEmpty ? e.url : e.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700, fontSize: 12),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => s.toggleFavorite(e),
+                          icon: const Icon(Icons.bookmark_remove,
+                              color: AppColors.warning, size: 18),
+                        ),
+                      ],
+                    ),
+                  )),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ============================================================================
+// HISTORY SCREEN (With Search, Platform Filter & Direct File Save)
+// ============================================================================
+class HistoryScreen extends StatefulWidget {
+  const HistoryScreen({super.key});
+  @override
+  State<HistoryScreen> createState() => _HistoryScreenState();
+}
+
+class _HistoryScreenState extends State<HistoryScreen> {
+  String searchQuery = '';
+  String selectedPlatform = 'all';
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppState();
+    return AnimatedBuilder(
+      animation: s,
+      builder: (context, _) {
+        final rawList = s.myDownloads;
+        final list = rawList.where((e) {
+          final matchesPlatform =
+              selectedPlatform == 'all' || e.platform == selectedPlatform;
+          final matchesSearch = searchQuery.isEmpty ||
+              e.title.toLowerCase().contains(searchQuery.toLowerCase()) ||
+              e.url.toLowerCase().contains(searchQuery.toLowerCase());
+          return matchesPlatform && matchesSearch;
+        }).toList();
+
         return Column(children: [
           Container(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Row(children: [
               Icon(Icons.history, color: s.accentColor),
               const SizedBox(width: 8),
-              const Text('سجل التنزيلات الخاص بك',
+              const Text('سجل التنزيلات والمعاينات',
                   style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
               const Spacer(),
-              if (list.isNotEmpty)
+              if (rawList.isNotEmpty)
                 TextButton.icon(
                   onPressed: () async {
                     final ok = await showDialog<bool>(
@@ -2707,11 +4381,34 @@ class HistoryScreen extends StatelessWidget {
                   },
                   icon: const Icon(Icons.delete_outline,
                       size: 16, color: AppColors.error),
-                  label: const Text('مسح السجل',
+                  label: const Text('مسح الكل',
                       style: TextStyle(color: AppColors.error, fontSize: 12)),
                 ),
             ]),
           ),
+          // Search & Filter Bar
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: TextField(
+              onChanged: (v) => setState(() => searchQuery = v),
+              style: const TextStyle(fontSize: 12.5),
+              decoration: InputDecoration(
+                hintText: 'ابحث في سجل الفيديوهات بالاسم أو الرابط...',
+                hintStyle:
+                    const TextStyle(fontSize: 11.5, color: AppColors.textDim),
+                prefixIcon: const Icon(Icons.search, size: 18),
+                filled: true,
+                fillColor: AppColors.surface,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
           Expanded(
             child: list.isEmpty
                 ? Center(
@@ -2722,7 +4419,7 @@ class HistoryScreen extends StatelessWidget {
                             size: 60,
                             color: AppColors.textDim.withOpacity(0.3)),
                         const SizedBox(height: 12),
-                        const Text('لا توجد تحميلات في سجلك حتى الآن',
+                        const Text('لا توجد عناصر مطابقة في السجل',
                             style: TextStyle(
                                 color: AppColors.textMuted,
                                 fontWeight: FontWeight.w600)),
@@ -2733,6 +4430,7 @@ class HistoryScreen extends StatelessWidget {
                     separatorBuilder: (_, __) => const SizedBox(height: 8),
                     itemBuilder: (context, i) {
                       final e = list[i];
+                      final isSaving = s.activeTasks.containsKey(e.id);
                       return Container(
                         padding: const EdgeInsets.all(13),
                         decoration: BoxDecoration(
@@ -2741,19 +4439,32 @@ class HistoryScreen extends StatelessWidget {
                           border: Border.all(color: AppColors.border),
                         ),
                         child: Row(children: [
-                          Container(
-                            width: 42,
-                            height: 42,
-                            decoration: BoxDecoration(
-                              color:
-                                  platformColor(e.platform).withOpacity(0.1),
-                              border: Border.all(
-                                  color: platformColor(e.platform)
-                                      .withOpacity(0.3)),
-                              borderRadius: BorderRadius.circular(12),
+                          GestureDetector(
+                            onTap: () => _showVideoPreviewModal(
+                              context,
+                              title: e.title,
+                              author: e.author,
+                              thumbnailUrl: e.thumbnailUrl,
+                              sourceUrl: e.url,
+                              streamUrl: e.downloadLink,
+                              platform: e.platform,
+                              duration: e.durationText,
+                              fileSize: e.fileSizeText,
                             ),
-                            child: Icon(platformIcon(e.platform),
-                                color: platformColor(e.platform), size: 20),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: e.thumbnailUrl.isNotEmpty
+                                  ? Image.network(
+                                      e.thumbnailUrl,
+                                      width: 56,
+                                      height: 48,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          _SmallPlatformBox(
+                                              platform: e.platform),
+                                    )
+                                  : _SmallPlatformBox(platform: e.platform),
+                            ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -2777,33 +4488,66 @@ class HistoryScreen extends StatelessWidget {
                                         fontSize: 10,
                                         color: AppColors.textDim)),
                                 const SizedBox(height: 5),
-                                Wrap(spacing: 6, children: [
+                                Wrap(spacing: 6, runSpacing: 4, children: [
                                   _MiniTag(e.platform, s.accentColor),
                                   _MiniTag(e.quality, AppColors.success),
-                                  if (e.strategy.isNotEmpty)
-                                    _MiniTag(e.strategy, AppColors.api),
+                                  if (e.fileSizeText.isNotEmpty)
+                                    _MiniTag(e.fileSizeText, AppColors.guest),
                                   _MiniTag(timeAgo(e.createdAt),
                                       AppColors.textMuted),
                                 ]),
                                 if (e.status == 'success' &&
                                     e.downloadLink.isNotEmpty) ...[
                                   const SizedBox(height: 8),
-                                  Row(children: [
+                                  Wrap(spacing: 6, runSpacing: 6, children: [
                                     _SmallBtn(
-                                      label: 'تنزيل',
-                                      icon: Icons.download,
-                                      color: s.accentColor,
+                                      label: isSaving
+                                          ? 'جاري الحفظ...'
+                                          : (e.localPath.isNotEmpty
+                                              ? 'تم الحفظ بالهاتف'
+                                              : 'حفظ بالهاتف'),
+                                      icon: e.localPath.isNotEmpty
+                                          ? Icons.check_circle
+                                          : Icons.download_rounded,
+                                      color: e.localPath.isNotEmpty
+                                          ? AppColors.success
+                                          : s.accentColor,
                                       onTap: () async {
-                                        final uri =
-                                            Uri.tryParse(e.downloadLink);
-                                        if (uri != null) {
-                                          await launchUrl(uri,
-                                              mode: LaunchMode
-                                                  .externalApplication);
+                                        if (isSaving) return;
+                                        final saved = await DownloadService
+                                            .downloadFileToDevice(
+                                          entry: e,
+                                          isAudio: e.quality == 'audio',
+                                        );
+                                        if (!context.mounted) return;
+                                        if (saved != null) {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                                content: Text(
+                                                    'تم الحفظ في: $saved'),
+                                                backgroundColor:
+                                                    AppColors.success),
+                                          );
                                         }
                                       },
                                     ),
-                                    const SizedBox(width: 6),
+                                    _SmallBtn(
+                                      label: 'معاينة',
+                                      icon: Icons.play_circle_outline,
+                                      color: AppColors.guest,
+                                      onTap: () => _showVideoPreviewModal(
+                                        context,
+                                        title: e.title,
+                                        author: e.author,
+                                        thumbnailUrl: e.thumbnailUrl,
+                                        sourceUrl: e.url,
+                                        streamUrl: e.downloadLink,
+                                        platform: e.platform,
+                                        duration: e.durationText,
+                                        fileSize: e.fileSizeText,
+                                      ),
+                                    ),
                                     _SmallBtn(
                                       label: 'نسخ الرابط',
                                       icon: Icons.copy,
@@ -2825,17 +4569,10 @@ class HistoryScreen extends StatelessWidget {
                               ],
                             ),
                           ),
-                          Container(
-                            width: 9,
-                            height: 9,
-                            decoration: BoxDecoration(
-                              color: e.status == 'success'
-                                  ? AppColors.success
-                                  : e.status == 'failed'
-                                      ? AppColors.error
-                                      : AppColors.warning,
-                              shape: BoxShape.circle,
-                            ),
+                          IconButton(
+                            onPressed: () => s.deleteDownloadItem(e.id),
+                            icon: const Icon(Icons.close,
+                                size: 16, color: AppColors.textDim),
                           ),
                         ]),
                       );
@@ -2905,7 +4642,7 @@ class _SmallBtn extends StatelessWidget {
 }
 
 // ============================================================================
-// SETTINGS SCREEN (Theme Customizer, Quality, AdSense & API Portal)
+// SETTINGS SCREEN (Theme Customizer, Smart Automation, AdSense & API Portal)
 // ============================================================================
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -2982,8 +4719,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         colors: [AppColors.secondary, s.accentColor]),
                     boxShadow: [
                       BoxShadow(
-                          color: s.accentColor.withOpacity(0.4),
-                          blurRadius: 28,
+                          color: s.accentColor.withOpacity(0.35),
+                          blurRadius: 24,
                           offset: const Offset(0, 8))
                     ],
                   ),
@@ -3028,7 +4765,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 14),
 
-            // Theme & Default Quality Customizer
+            // Theme & Smart Download Preferences
             Container(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
@@ -3043,7 +4780,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Icon(Icons.palette_outlined,
                         color: s.accentColor, size: 18),
                     const SizedBox(width: 8),
-                    const Text('تخصيص المظهر والجودة الافتراضية',
+                    const Text('تخصيص المظهر والتحميل الذكي',
                         style: TextStyle(
                             fontWeight: FontWeight.w800, fontSize: 14)),
                   ]),
@@ -3055,7 +4792,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: themeSwatches.map((c) {
-                      final selected = s.accentColor.value == c.value;
+                      final selected =
+                          s.accentColor.value == c.value;
                       return GestureDetector(
                         onTap: () => s.saveSettings(newColor: c),
                         child: AnimatedContainer(
@@ -3087,6 +4825,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     }).toList(),
                   ),
                   const SizedBox(height: 16),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: s.autoSaveAfterExtract,
+                    activeColor: s.accentColor,
+                    title: const Text('حفظ تلقائي بالهاتف فور الاستخراج',
+                        style: TextStyle(
+                            fontSize: 12.5, fontWeight: FontWeight.w700)),
+                    subtitle: const Text(
+                        'بدء تنزيل ملف الفيديو مباشرة بمجرد نجاح استخراج الرابط',
+                        style: TextStyle(
+                            fontSize: 10.5, color: AppColors.textMuted)),
+                    onChanged: (v) => s.saveSettings(newAutoSave: v),
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: s.autoDetectClipboard,
+                    activeColor: s.accentColor,
+                    title: const Text('رادار الحافظة الذكي',
+                        style: TextStyle(
+                            fontSize: 12.5, fontWeight: FontWeight.w700)),
+                    subtitle: const Text(
+                        'التعرف تلقائياً على روابط الفيديوهات المنسوخة',
+                        style: TextStyle(
+                            fontSize: 10.5, color: AppColors.textMuted)),
+                    onChanged: (v) =>
+                        s.saveSettings(newAutoDetectClipboard: v),
+                  ),
+                  const SizedBox(height: 8),
                   const Text('الجودة الافتراضية للتحميل:',
                       style:
                           TextStyle(fontSize: 12, color: AppColors.textMuted)),
@@ -3213,7 +4979,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     AppColors.api.withOpacity(0.08),
                     AppColors.api.withOpacity(0.02)
                   ]),
-                  border: Border.all(color: AppColors.api.withOpacity(0.25)),
+                  border:
+                      Border.all(color: AppColors.api.withOpacity(0.25)),
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: Column(
@@ -3435,7 +5202,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         color: AppColors.error, fontWeight: FontWeight.w700)),
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  side: BorderSide(color: AppColors.error.withOpacity(0.3)),
+                  side:
+                      BorderSide(color: AppColors.error.withOpacity(0.3)),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
                 ),

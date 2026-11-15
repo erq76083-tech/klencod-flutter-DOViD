@@ -3546,7 +3546,7 @@ class DownloadService {
   static Future<String> _resolveAndCanonicalizeUrl(String rawUrl) async {
     String url = rawUrl.trim();
     // Extract first URL if user pasted extra text around the link
-    final urlMatch = RegExp(r'https?:\/\/[^\s"'<>]+').firstMatch(url);
+    final urlMatch = RegExp(r"""https?:\/\/[^\s"'<>]+""").firstMatch(url);
     if (urlMatch != null) {
       url = urlMatch.group(0)!;
     }
@@ -4430,12 +4430,12 @@ class DownloadService {
       if (res.statusCode == 200) {
         final body = res.body;
         final mp4Match = RegExp(
-                r'https:\/\/v\.pinimg\.com\/videos\/[^\s"\]+\.mp4')
+                r"""https:\/\/v\.pinimg\.com\/videos\/[^\s"\\]+\.mp4""")
             .firstMatch(body);
         if (mp4Match != null) {
           final videoUrl = mp4Match.group(0)!;
           final thumbMatch = RegExp(
-                  r'https:\/\/i\.pinimg\.com\/originals\/[^\s"\]+\.(?:jpg|png)')
+                  r"""https:\/\/i\.pinimg\.com\/originals\/[^\s"\\]+\.(?:jpg|png)""")
               .firstMatch(body);
           return {
             'status': 'success',
@@ -4656,7 +4656,7 @@ class DownloadService {
         // 2. Check OpenGraph og:video:secure_url / og:video
         if (videoUrl.isEmpty) {
           final ogMatch = RegExp(
-                  r'<meta[^>]+property=["'](?:og:video:secure_url|og:video:url|og:video|twitter:player:stream)["'][^>]+content=["'](https?:\/\/[^"']+)["']',
+                  r"""<meta[^>]+property=["'](?:og:video:secure_url|og:video:url|og:video|twitter:player:stream)["'][^>]+content=["'](https?:\/\/[^"']+)["']""",
                   caseSensitive: false)
               .firstMatch(html);
           if (ogMatch != null) {
@@ -4671,11 +4671,11 @@ class DownloadService {
 
         if (videoUrl.isNotEmpty) {
           final titleMatch = RegExp(
-                  r'<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']',
+                  r"""<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']""",
                   caseSensitive: false)
               .firstMatch(html);
           final thumbMatch = RegExp(
-                  r'<meta[^>]+property=["']og:image["'][^>]+content=["'](https?:\/\/[^"']+)["']',
+                  r"""<meta[^>]+property=["']og:image["'][^>]+content=["'](https?:\/\/[^"']+)["']""",
                   caseSensitive: false)
               .firstMatch(html);
           return {
@@ -8423,7 +8423,7 @@ class _SmartToolsScreenState extends State<SmartToolsScreen> {
 
   void _extractUrlsFromMessyText() {
     final raw = rawTextCtrl.text;
-    final regex = RegExp(r'https?:\/\/[^\s"'<>]+', caseSensitive: false);
+    final regex = RegExp(r"""https?:\/\/[^\s"'<>]+""", caseSensitive: false);
     final matches = regex
         .allMatches(raw)
         .map((m) => m.group(0)!.trim())
@@ -8436,7 +8436,7 @@ class _SmartToolsScreenState extends State<SmartToolsScreen> {
   void _generateViralSeoPack() {
     final rawTopic = topicCtrl.text.trim();
     final topic = rawTopic.isEmpty ? 'صناعة المحتوى' : rawTopic;
-    final cleanTag = topic.replaceAll(RegExp(r'[^\w؀-ۿ]+'), '_');
+    final cleanTag = topic.replaceAll(RegExp(r'[^\w\u0600-\u06FF]+'), '_');
 
     final Map<String, List<String>> platformTags = {
       'tiktok': [

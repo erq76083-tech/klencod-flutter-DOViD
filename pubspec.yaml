@@ -1,7 +1,7 @@
 name: dovid
-description: A professional task manager built with Flutter.
+description: DOViD - Smart Video Downloader System
 publish_to: 'none'
-version: 1.0.0+1
+version: 4.1.0+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -9,7 +9,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  http: ^1.2.0
   shared_preferences: ^2.2.2
+  url_launcher: ^6.2.4
+  intl: ^0.19.0
+  collection: ^1.18.0
 
 flutter:
   uses-material-design: true

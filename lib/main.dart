@@ -7900,7 +7900,7 @@ class _SmartToolsScreenState extends State<SmartToolsScreen> {
 
   void _extractUrlsFromMessyText() {
     final raw = rawTextCtrl.text;
-    final regex = RegExp(r'https?:\/\/[^\s"'<>]+', caseSensitive: false);
+    final regex = RegExp(r"""https?://[^\s"'<>]+""", caseSensitive: false);
     final matches = regex
         .allMatches(raw)
         .map((m) => m.group(0)!.trim())

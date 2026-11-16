@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -16,7 +17,7 @@ import 'package:collection/collection.dart';
 const String kDevName = 'YOSSEF JOO';
 const String kDevWhatsapp = '01029892573';
 const String kAppName = 'DOViD';
-const String kAppVersion = 'v9.0 Ultra 3D Edition';
+const String kAppVersion = 'v10.0 JOO CLOUD Enterprise';
 const String kApiEndpoint = 'https://zecora0.serv00.net/download/download.php';
 const String kJooCloudProjectUrl =
     'https://ttyukgksy6juavi55.free.nf/?page=project&id=prj_a19edff7f9a64df51756';
@@ -25,6 +26,8 @@ const String kJooCloudApiEndpoint =
 const String kJooCloudProjectId = 'prj_a19edff7f9a64df51756';
 const String kJooCloudPublicKey =
     'pk_e60218cf55bf50a1bfef2d7712c57dd962951081';
+const String kJooCloudReadOnlyKey =
+    'rk_04c9a5a204e76f417b35af77179a77248457d32a';
 const String kApiPrice = '100';
 const String kAdminEmail = 'guhfyuggu7@gmail.com';
 const String kAdminUsername = 'admin';
@@ -658,139 +661,17 @@ class ActiveDownloadTask {
 }
 
 // ============================================================================
-// HIGH-PERFORMANCE SQLITE STORAGE ENGINE (WAL Mode + Indexed Tables + ACID)
+// JOO CLOUD v3.0 ENTERPRISE STORAGE ENGINE (Zero SQLite - Cloud + Fast Cache)
 // ============================================================================
-class SqliteStorageEngine {
-  static final SqliteStorageEngine _instance = SqliteStorageEngine._internal();
-  factory SqliteStorageEngine() => _instance;
-  SqliteStorageEngine._internal();
+class JooCloudStorageEngine {
+  static final JooCloudStorageEngine _instance =
+      JooCloudStorageEngine._internal();
+  factory JooCloudStorageEngine() => _instance;
+  JooCloudStorageEngine._internal();
 
-  static const MethodChannel _sqliteChannel =
-      MethodChannel('com.dovid.app/sqlite');
-
-  File? _dbFile;
-  File? _walFile;
   SharedPreferences? _prefs;
-  bool isWalActive = true;
-  bool isNativeSqliteBridgeAvailable = false;
-  int lastVacuumTimestamp = 0;
   int writeTransactionsCount = 0;
-  String dbFilePath = '';
-  String lastIntegrityStatus = 'OK (Verified ACID + SHA-Checksum)';
-
-  static const List<String> tableSchemas = [
-    '''CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      username TEXT UNIQUE NOT NULL,
-      passwordHash TEXT NOT NULL,
-      email TEXT,
-      isAdmin INTEGER DEFAULT 0,
-      isVip INTEGER DEFAULT 0,
-      isBanned INTEGER DEFAULT 0,
-      dailyDownloadsCount INTEGER DEFAULT 0,
-      lastQuotaDate TEXT,
-      createdAt TEXT NOT NULL,
-      lastLogin TEXT
-    );''',
-    '''CREATE TABLE IF NOT EXISTS downloads (
-      id TEXT PRIMARY KEY,
-      userId TEXT NOT NULL,
-      url TEXT NOT NULL,
-      title TEXT,
-      author TEXT,
-      thumbnailUrl TEXT,
-      durationText TEXT,
-      fileSizeText TEXT,
-      platform TEXT,
-      downloadLink TEXT,
-      hdLink TEXT,
-      audioLink TEXT,
-      localPath TEXT,
-      quality TEXT,
-      status TEXT,
-      strategy TEXT,
-      folderName TEXT DEFAULT 'عام',
-      isFavorite INTEGER DEFAULT 0,
-      isVaulted INTEGER DEFAULT 0,
-      createdAt TEXT NOT NULL,
-      completedAt TEXT
-    );''',
-    '''CREATE INDEX IF NOT EXISTS idx_downloads_user ON downloads(userId, createdAt DESC);''',
-    '''CREATE INDEX IF NOT EXISTS idx_downloads_platform ON downloads(platform, status);''',
-    '''CREATE TABLE IF NOT EXISTS bypass_logs (
-      id TEXT PRIMARY KEY,
-      userId TEXT NOT NULL,
-      url TEXT NOT NULL,
-      strategy TEXT NOT NULL,
-      status TEXT NOT NULL,
-      responseTimeMs INTEGER DEFAULT 0,
-      createdAt TEXT NOT NULL
-    );''',
-    '''CREATE TABLE IF NOT EXISTS security_events (
-      id TEXT PRIMARY KEY,
-      eventType TEXT NOT NULL,
-      ipOrInterface TEXT NOT NULL,
-      username TEXT,
-      details TEXT,
-      isThreat INTEGER DEFAULT 0,
-      createdAt TEXT NOT NULL
-    );''',
-    '''CREATE TABLE IF NOT EXISTS blocked_ips (
-      id TEXT PRIMARY KEY,
-      ip TEXT UNIQUE NOT NULL,
-      reason TEXT,
-      blockedAt TEXT NOT NULL
-    );''',
-    '''CREATE TABLE IF NOT EXISTS api_keys (
-      id TEXT PRIMARY KEY,
-      userId TEXT NOT NULL,
-      apiKey TEXT UNIQUE NOT NULL,
-      apiSecret TEXT NOT NULL,
-      status TEXT DEFAULT 'active',
-      subscriptionStart TEXT,
-      subscriptionEnd TEXT,
-      totalRequests INTEGER DEFAULT 0,
-      monthlyRequests INTEGER DEFAULT 0,
-      maxQuota INTEGER DEFAULT 10000,
-      createdAt TEXT NOT NULL
-    );''',
-    '''CREATE TABLE IF NOT EXISTS subscription_codes (
-      id TEXT PRIMARY KEY,
-      code TEXT UNIQUE NOT NULL,
-      durationDays INTEGER DEFAULT 30,
-      quotaLimit INTEGER DEFAULT 10000,
-      grantsVip INTEGER DEFAULT 1,
-      status TEXT DEFAULT 'active',
-      usedBy TEXT,
-      usedAt TEXT,
-      createdAt TEXT NOT NULL
-    );''',
-    '''CREATE TABLE IF NOT EXISTS announcements (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      body TEXT NOT NULL,
-      severity TEXT DEFAULT 'info',
-      isActive INTEGER DEFAULT 1,
-      createdAt TEXT NOT NULL
-    );''',
-    '''CREATE TABLE IF NOT EXISTS ad_events (
-      id TEXT PRIMARY KEY,
-      adFormat TEXT NOT NULL,
-      placement TEXT NOT NULL,
-      unitId TEXT,
-      eventType TEXT NOT NULL,
-      createdAt TEXT NOT NULL
-    );''',
-    '''CREATE TABLE IF NOT EXISTS user_activity_logs (
-      id TEXT PRIMARY KEY,
-      userId TEXT NOT NULL,
-      username TEXT NOT NULL,
-      actionType TEXT NOT NULL,
-      details TEXT,
-      platform TEXT,
-      createdAt TEXT NOT NULL
-    );''',
-  ];
+  String lastIntegrityStatus = 'متزامن مع JOO CLOUD v3.0 Enterprise';
 
   final Map<String, List<Map<String, dynamic>>> _tables = {
     'users': [],
@@ -804,127 +685,36 @@ class SqliteStorageEngine {
     'ad_events': [],
     'user_activity_logs': [],
   };
-
   Map<String, dynamic> _configStore = {};
   Timer? _commitDebounce;
 
   Future<void> init(SharedPreferences prefs) async {
     _prefs = prefs;
+    await JooCloudDatabaseClient.loadSavedCredentials(prefs);
+    await _loadCache();
+  }
 
+  Future<void> _loadCache() async {
     try {
-      final res = await _sqliteChannel.invokeMethod('initDatabase', {
-        'dbName': 'dovid_enterprise_v8.sqlite',
-        'pragmas': [
-          'PRAGMA journal_mode = WAL;',
-          'PRAGMA synchronous = NORMAL;',
-          'PRAGMA temp_store = MEMORY;',
-          'PRAGMA cache_size = -8000;',
-          'PRAGMA foreign_keys = ON;',
-        ],
-        'schemas': tableSchemas,
-      }).timeout(const Duration(milliseconds: 500));
-      if (res == true) {
-        isNativeSqliteBridgeAvailable = true;
-      }
-    } catch (_) {
-      isNativeSqliteBridgeAvailable = false;
-    }
-
-    try {
-      final dir = await _resolveDatabaseDirectory();
-      _dbFile = File('${dir.path}/dovid_enterprise_v8.sqlite');
-      _walFile = File('${dir.path}/dovid_enterprise_v8.sqlite-wal');
-      dbFilePath = _dbFile!.path;
-
-      if (await _walFile!.exists() && !(await _dbFile!.exists())) {
-        await _walFile!.copy(_dbFile!.path);
-      }
-
-      if (await _dbFile!.exists()) {
-        final rawContent = await _dbFile!.readAsString();
-        if (rawContent.trim().isNotEmpty) {
-          final decoded = jsonDecode(rawContent);
-          if (decoded is Map<String, dynamic>) {
-            _hydrateFromPayload(decoded);
-            return;
+      final raw = _prefs?.getString('joo_cloud_v3_master_cache');
+      if (raw != null && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map && decoded['tables'] is Map) {
+          final tbls = Map<String, dynamic>.from(decoded['tables']);
+          for (final entry in tbls.entries) {
+            if (entry.value is List) {
+              _tables[entry.key] = (entry.value as List)
+                  .whereType<Map>()
+                  .map((m) => Map<String, dynamic>.from(m))
+                  .toList();
+            }
           }
+        }
+        if (decoded is Map && decoded['config'] is Map) {
+          _configStore = Map<String, dynamic>.from(decoded['config']);
         }
       }
     } catch (_) {}
-
-    _migrateFromSharedPreferences(prefs);
-    await commitImmediate();
-  }
-
-  Future<Directory> _resolveDatabaseDirectory() async {
-    final candidates = [
-      Directory.systemTemp.path,
-      '/data/user/0/com.dovid.app/databases',
-      '/storage/emulated/0/Download/DOViD/.db',
-    ];
-    for (final p in candidates) {
-      try {
-        final d = Directory(p);
-        if (!await d.exists()) {
-          await d.create(recursive: true);
-        }
-        final test = File('${d.path}/.sqlite_lock_test');
-        await test.writeAsString('1', flush: true);
-        await test.delete();
-        return d;
-      } catch (_) {}
-    }
-    return Directory.systemTemp;
-  }
-
-  void _hydrateFromPayload(Map<String, dynamic> payload) {
-    final tablesMap = payload['tables'];
-    if (tablesMap is Map) {
-      for (final tableName in _tables.keys) {
-        final rows = tablesMap[tableName];
-        if (rows is List) {
-          _tables[tableName] =
-              rows.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-        }
-      }
-    }
-    if (payload['config'] is Map) {
-      _configStore = Map<String, dynamic>.from(payload['config'] as Map);
-    }
-    lastVacuumTimestamp =
-        int.tryParse((payload['lastVacuum'] ?? '0').toString()) ?? 0;
-  }
-
-  void _migrateFromSharedPreferences(SharedPreferences prefs) {
-    final backupJson = prefs.getString('sqlite_v8_master_mirror');
-    if (backupJson != null && backupJson.isNotEmpty) {
-      try {
-        final decoded = jsonDecode(backupJson);
-        if (decoded is Map<String, dynamic>) {
-          _hydrateFromPayload(decoded);
-          return;
-        }
-      } catch (_) {}
-    }
-
-    final legacyMap = {
-      'users': 'users',
-      'downloads': 'downloads',
-      'bypass_logs': 'bypass_logs',
-      'blocked_ips': 'blocked_ips',
-      'api_keys': 'api_keys',
-      'codes': 'subscription_codes',
-    };
-    legacyMap.forEach((oldKey, tableName) {
-      final raw = prefs.getString(oldKey.trim());
-      if (raw != null && raw.isNotEmpty) {
-        try {
-          final list = jsonDecode(raw) as List;
-          _tables[tableName] =
-              list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-        } catch (_) {}
-      }
-    });
   }
 
   List<Map<String, dynamic>> queryTable(String table) {
@@ -933,22 +723,24 @@ class SqliteStorageEngine {
 
   void replaceTable(String tableName, List<Map<String, dynamic>> rows) {
     _tables[tableName] = rows;
-    _scheduleWalCommit();
-    // Mirror asynchronously to JOO CLOUD DATABASE server (prj_a19edff7f9a64df51756)
-    Future.microtask(() async {
-      try {
-        await JooCloudDatabaseClient.upsertDocument(
-          collection: tableName,
-          docId: 'snapshot_$tableName',
-          document: {
-            'table': tableName,
-            'count': rows.length,
-            'rows': rows.take(150).toList(),
-            'updatedAt': DateTime.now().toIso8601String(),
-          },
-        );
-      } catch (_) {}
-    });
+    _scheduleCommit();
+    if (JooCloudDatabaseClient.hasValidSecretKey) {
+      Future.microtask(() async {
+        try {
+          await JooCloudDatabaseClient.upsertDocument(
+            collection: 'dovid_$tableName',
+            docId: 'master_$tableName',
+            document: {
+              'project_id': kJooCloudProjectId,
+              'table': tableName,
+              'count': rows.length,
+              'rows': rows.take(150).toList(),
+              'updatedAt': DateTime.now().toIso8601String(),
+            },
+          );
+        } catch (_) {}
+      });
+    }
   }
 
   dynamic getConfig(String key, [dynamic defaultValue]) {
@@ -958,10 +750,10 @@ class SqliteStorageEngine {
 
   void setConfig(String key, dynamic value) {
     _configStore[key] = value;
-    _scheduleWalCommit();
+    _scheduleCommit();
   }
 
-  void _scheduleWalCommit() {
+  void _scheduleCommit() {
     writeTransactionsCount++;
     _commitDebounce?.cancel();
     _commitDebounce = Timer(const Duration(milliseconds: 120), () {
@@ -971,195 +763,156 @@ class SqliteStorageEngine {
 
   Future<void> commitImmediate() async {
     final payload = {
-      'engine': 'DOViD-SQLite-WAL-v8',
-      'schemaVersion': 8,
+      'engine': 'JOO-CLOUD-v3.0-Enterprise',
+      'projectId': kJooCloudProjectId,
       'updatedAt': DateTime.now().toIso8601String(),
-      'lastVacuum': lastVacuumTimestamp,
       'tables': _tables,
       'config': _configStore,
     };
-    final serialized = jsonEncode(payload);
-    final checksum = _computeChecksum(serialized);
-    payload['checksum'] = checksum;
-    final finalJson = jsonEncode(payload);
-
-    if (_dbFile != null && _walFile != null) {
-      try {
-        await _walFile!.writeAsString(finalJson, flush: true);
-        await _walFile!.copy(_dbFile!.path);
-      } catch (_) {}
-    }
-
     try {
-      await _prefs?.setString('sqlite_v8_master_mirror', finalJson);
+      await _prefs?.setString('joo_cloud_v3_master_cache', jsonEncode(payload));
     } catch (_) {}
   }
 
-  Future<Map<String, dynamic>> runVacuumAndIntegrityCheck() async {
-    final sw = Stopwatch()..start();
-    if ((_tables['bypass_logs']?.length ?? 0) > 300) {
-      _tables['bypass_logs'] = _tables['bypass_logs']!.sublist(0, 300);
-    }
-    if ((_tables['security_events']?.length ?? 0) > 300) {
-      _tables['security_events'] = _tables['security_events']!.sublist(0, 300);
-    }
-    if ((_tables['ad_events']?.length ?? 0) > 500) {
-      _tables['ad_events'] = _tables['ad_events']!.sublist(0, 500);
-    }
-    lastVacuumTimestamp = DateTime.now().millisecondsSinceEpoch;
-    await commitImmediate();
-    if (_walFile != null && await _walFile!.exists()) {
-      try {
-        await _walFile!.delete();
-      } catch (_) {}
-    }
-    sw.stop();
-    lastIntegrityStatus =
-        'VALID • WAL Checkpointed in ${sw.elapsedMilliseconds}ms';
-    return {
-      'status': 'success',
-      'elapsedMs': sw.elapsedMilliseconds,
-      'sizeBytes': await getDatabaseSizeBytes(),
-    };
-  }
-
-  Future<int> getDatabaseSizeBytes() async {
-    try {
-      if (_dbFile != null && await _dbFile!.exists()) {
-        return await _dbFile!.length();
-      }
-    } catch (_) {}
-    final mirror = _prefs?.getString('sqlite_v8_master_mirror') ?? '';
-    return utf8.encode(mirror).length;
+  Future<int> getCacheSizeBytes() async {
+    final raw = _prefs?.getString('joo_cloud_v3_master_cache') ?? '';
+    return utf8.encode(raw).length;
   }
 
   String exportFullDatabaseJson() {
-    final payload = {
-      'engine': 'DOViD-SQLite-WAL-v8',
-      'schemaVersion': 8,
+    return const JsonEncoder.withIndent('  ').convert({
+      'engine': 'JOO-CLOUD-v3.0-Enterprise',
+      'projectId': kJooCloudProjectId,
       'exportedAt': DateTime.now().toIso8601String(),
-      'ddl': tableSchemas,
       'tables': _tables,
       'config': _configStore,
-    };
-    return const JsonEncoder.withIndent('  ').convert(payload);
-  }
-
-  String _computeChecksum(String input) {
-    int h1 = 0x811c9dc5;
-    int h2 = 0x1000193;
-    for (int i = 0; i < input.length; i++) {
-      final c = input.codeUnitAt(i);
-      h1 ^= c;
-      h1 = (h1 * 0x01000193) & 0x7FFFFFFF;
-      h2 = ((h2 << 5) + h2 + c) & 0x7FFFFFFF;
-    }
-    return '${h1.toRadixString(16).padLeft(8, '0')}${h2.toRadixString(16).padLeft(8, '0')}';
+    });
   }
 }
 
 // ============================================================================
-// JOO CLOUD DATABASE REMOTE STORAGE CLIENT (prj_a19edff7f9a64df51756)
+// JOO CLOUD v3.0 ENTERPRISE SDK CLIENT (prj_a19edff7f9a64df51756)
 // ============================================================================
 class JooCloudDatabaseClient {
   static String projectUrl = kJooCloudProjectUrl;
   static String apiEndpoint = kJooCloudApiEndpoint;
   static String projectId = kJooCloudProjectId;
   static String publicKey = kJooCloudPublicKey;
-  static String secretKey = kJooCloudPublicKey;
+  static String readOnlyKey = kJooCloudReadOnlyKey;
+  static String secretKey = '';
 
   static int syncedDocumentsCount = 0;
-  static String lastCloudResponse = 'متصل بسيرفر JOO CLOUD DATABASE وجاهز';
+  static int lastLatencyMs = 0;
+  static String lastCloudResponse = 'بانتظار فحص الاتصال بسيرفر JOO CLOUD';
   static DateTime? lastCloudSyncTime;
+  static List<Map<String, dynamic>> cloudCollections = [];
 
-  static String _hexDigest(String input) {
-    final bytes = utf8.encode(input);
-    int a = 0x13579BDF;
-    int b = 0x2468ACE0;
-    int c = 0xFEDCBA98;
-    int d = 0x76543210;
-    for (int r = 0; r < 16; r++) {
-      for (int i = 0; i < bytes.length; i++) {
-        final v = bytes[i];
-        a = ((a ^ v) * 0x01000193 + i + r) & 0xFFFFFFFF;
-        b = ((b + a) ^ (v << 5)) & 0xFFFFFFFF;
-        c = ((c ^ b) * 0x5BD1E995 + r) & 0xFFFFFFFF;
-        d = ((d + c) ^ (a >> 3)) & 0xFFFFFFFF;
-      }
+  static bool get hasValidSecretKey =>
+      secretKey.trim().isNotEmpty && secretKey.trim().startsWith('sk_');
+
+  static Future<void> loadSavedCredentials(SharedPreferences prefs) async {
+    final savedSk = prefs.getString('joo_cloud_secret_key') ?? '';
+    if (savedSk.trim().isNotEmpty) {
+      secretKey = savedSk.trim();
     }
-    return [a, b, c, d, a ^ c, b ^ d, a ^ b, c ^ d]
-        .map((x) => (x & 0xFFFFFFFF).toRadixString(16).padLeft(8, '0'))
-        .join();
+    final savedEndpoint = prefs.getString('joo_cloud_endpoint') ?? '';
+    if (savedEndpoint.trim().isNotEmpty) {
+      apiEndpoint = savedEndpoint.trim();
+    }
   }
 
-  static Map<String, String> _buildSignedHeaders(
-      String method, String action, String rawBody) {
-    final ts = (DateTime.now().millisecondsSinceEpoch ~/ 1000).toString();
-    final rng = Random.secure();
-    final nonce = List.generate(
-        16, (_) => rng.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
-    final bodyHash = _hexDigest(rawBody);
-    final payload = '$method\n$action\n$ts\n$nonce\n$bodyHash';
-    final sig = _hexDigest('$secretKey|$payload|$publicKey');
+  static Future<void> saveSecretKey(String newSk) async {
+    secretKey = newSk.trim();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('joo_cloud_secret_key', secretKey);
+  }
 
-    return {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'X-Project-Id': projectId,
-      'X-Project-Key': publicKey,
-      'X-API-Key': publicKey,
-      'Authorization': 'Bearer $publicKey',
-      'X-Timestamp': ts,
-      'X-Nonce': nonce,
-      'X-Signature': sig,
-    };
+  static String _randomNonce() {
+    final rnd = Random.secure();
+    return List.generate(32, (_) => rnd.nextInt(16).toRadixString(16)).join();
   }
 
   static Future<Map<String, dynamic>> callAction(
     String action,
-    Map<String, dynamic> body,
-  ) async {
-    final rawBody = jsonEncode({
-      'project_id': projectId,
-      'public_key': publicKey,
-      ...body,
-    });
-    final headers = _buildSignedHeaders('POST', action, rawBody);
+    Map<String, dynamic> body, {
+    bool useReadOnly = false,
+  }) async {
+    final keyToUse = useReadOnly ? readOnlyKey : publicKey;
+    final activeSecret = secretKey.trim().isNotEmpty ? secretKey.trim() : keyToUse;
+    final bodyStr = jsonEncode(body);
+    final ts = (DateTime.now().millisecondsSinceEpoch ~/ 1000).toString();
+    final nonce = _randomNonce();
+    final bodyHash = sha256.convert(utf8.encode(bodyStr)).toString();
+    final payload = 'POST\n$action\n$ts\n$nonce\n$bodyHash';
+    final sig = Hmac(sha256, utf8.encode(activeSecret))
+        .convert(utf8.encode(payload))
+        .toString();
 
-    final urls = [
-      '$apiEndpoint&action=$action&id=$projectId',
-      'https://ttyukgksy6juavi55.free.nf/?api=1&action=$action&id=$projectId',
-    ];
+    final headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'X-Project-Key': keyToUse,
+      'X-Timestamp': ts,
+      'X-Nonce': nonce,
+      'X-Signature': sig,
+    };
 
-    for (final target in urls) {
-      try {
-        final res = await http
-            .post(
-              Uri.parse(target),
-              headers: headers,
-              body: rawBody,
-            )
-            .timeout(const Duration(seconds: 10));
-        if (res.statusCode >= 200 && res.statusCode < 500) {
-          final decoded = jsonDecode(res.body);
-          if (decoded is Map<String, dynamic>) {
-            lastCloudSyncTime = DateTime.now();
-            return decoded;
-          }
-        }
-      } catch (_) {}
+    final sw = Stopwatch()..start();
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$apiEndpoint&action=$action'),
+            headers: headers,
+            body: bodyStr,
+          )
+          .timeout(const Duration(seconds: 12));
+      sw.stop();
+      lastLatencyMs = sw.elapsedMilliseconds;
+      final decoded = jsonDecode(utf8.decode(res.bodyBytes));
+      if (decoded is Map<String, dynamic>) {
+        lastCloudSyncTime = DateTime.now();
+        return decoded;
+      }
+      return {'ok': false, 'error': 'Invalid JSON response (${res.statusCode})'};
+    } catch (e) {
+      sw.stop();
+      return {'ok': false, 'error': e.toString()};
     }
-    return {'ok': false, 'status': 'offline_cached'};
   }
 
   static Future<bool> pingServer() async {
+    if (!hasValidSecretKey) {
+      lastCloudResponse =
+          'أدخل Secret Key (sk_...) من لوحة JOO CLOUD لتفعيل التوقيع الأمني HMAC-SHA256';
+      return false;
+    }
     final res = await callAction('ping', {'project_id': projectId});
-    final ok = res['ok'] == true || res['project'] != null;
-    lastCloudResponse = ok
-        ? 'متصل بنجاح بسيرفر JOO CLOUD ($projectId)'
-        : 'تم تفعيل التخزين الهجين (JOO CLOUD + SQLite Local Mirror)';
+    final ok = res['ok'] == true ||
+        res['status'] == 'ok' ||
+        res['pong'] == true ||
+        res['project'] != null;
+    if (ok) {
+      lastCloudResponse =
+          'متصل بنجاح بـ JOO CLOUD v3.0 (${lastLatencyMs}ms)';
+    } else {
+      lastCloudResponse =
+          'رد السيرفر: ${res['error'] ?? res['message'] ?? res.toString()}';
+    }
     lastCloudSyncTime = DateTime.now();
     return ok;
+  }
+
+  static Future<List<Map<String, dynamic>>> listCollections() async {
+    final res = await callAction('collection.list', {});
+    final rawList = res['collections'] ?? res['data'] ?? res['items'];
+    if (rawList is List) {
+      cloudCollections = rawList
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+      return cloudCollections;
+    }
+    return [];
   }
 
   static Future<bool> upsertDocument({
@@ -1167,29 +920,67 @@ class JooCloudDatabaseClient {
     required String docId,
     required Map<String, dynamic> document,
   }) async {
-    final res = await callAction('doc.set', {
+    if (!hasValidSecretKey) return false;
+    // Try update first; if not found, insert with auto_create_collection: true
+    final updateRes = await callAction('doc.update', {
       'collection': collection,
       'doc_id': docId,
-      'document': document,
+      'data': document,
       'merge': true,
     });
-    syncedDocumentsCount++;
-    lastCloudSyncTime = DateTime.now();
-    return res['ok'] == true;
+    if (updateRes['ok'] == true) {
+      syncedDocumentsCount++;
+      lastCloudSyncTime = DateTime.now();
+      return true;
+    }
+    final insertRes = await callAction('doc.insert', {
+      'collection': collection,
+      'doc_id': docId,
+      'data': document,
+      'auto_create_collection': true,
+    });
+    if (insertRes['ok'] == true) {
+      syncedDocumentsCount++;
+      lastCloudSyncTime = DateTime.now();
+      return true;
+    }
+    return false;
+  }
+
+  static Future<bool> bulkInsert({
+    required String collection,
+    required List<Map<String, dynamic>> documents,
+  }) async {
+    if (!hasValidSecretKey || documents.isEmpty) return false;
+    final res = await callAction('doc.bulk_insert', {
+      'collection': collection,
+      'documents': documents.take(250).toList(),
+      'auto_create_collection': true,
+    });
+    if (res['ok'] == true) {
+      syncedDocumentsCount += documents.length;
+      lastCloudSyncTime = DateTime.now();
+      return true;
+    }
+    return false;
   }
 
   static Future<List<Map<String, dynamic>>> fetchCollection(
     String collection, {
     int limit = 100,
+    Map<String, dynamic>? where,
   }) async {
-    final res = await callAction('doc.find', {
+    if (!hasValidSecretKey) return [];
+    final res = await callAction('doc.query', {
       'collection': collection,
+      if (where != null) 'where': where,
       'limit': limit,
       'offset': 0,
     });
-    if (res['documents'] is List) {
+    final rawDocs = res['documents'] ?? res['data'] ?? res['results'];
+    if (rawDocs is List) {
       final list = <Map<String, dynamic>>[];
-      for (final item in res['documents']) {
+      for (final item in rawDocs) {
         if (item is Map && item['data'] is Map) {
           list.add(Map<String, dynamic>.from(item['data']));
         } else if (item is Map) {
@@ -1199,6 +990,30 @@ class JooCloudDatabaseClient {
       return list;
     }
     return [];
+  }
+
+  static Future<Map<String, dynamic>> authRegister({
+    required String email,
+    required String password,
+    Map<String, dynamic>? profile,
+  }) async {
+    if (!hasValidSecretKey) return {'ok': false, 'error': 'missing_secret_key'};
+    return callAction('auth.register', {
+      'email': email,
+      'password': password,
+      if (profile != null) 'profile': profile,
+    });
+  }
+
+  static Future<Map<String, dynamic>> authLogin({
+    required String email,
+    required String password,
+  }) async {
+    if (!hasValidSecretKey) return {'ok': false, 'error': 'missing_secret_key'};
+    return callAction('auth.login', {
+      'email': email,
+      'password': password,
+    });
   }
 }
 
@@ -1466,7 +1281,7 @@ class GoogleAdsEngine {
 }
 
 // ============================================================================
-// APP STATE (Enterprise Singleton with SQLite, Security Shield & Google Ads)
+// APP STATE (Enterprise Singleton with JOO CLOUD v3.0, Security Shield & Google Ads)
 // ============================================================================
 class AppState extends ChangeNotifier {
   static final AppState _instance = AppState._internal();
@@ -1474,7 +1289,7 @@ class AppState extends ChangeNotifier {
   AppState._internal();
 
   SharedPreferences? _prefs;
-  final SqliteStorageEngine db = SqliteStorageEngine();
+  final JooCloudStorageEngine db = JooCloudStorageEngine();
   Timer? _vpnMonitorTimer;
 
   AppUser? currentUser;
@@ -1584,7 +1399,7 @@ class AppState extends ChangeNotifier {
     'deep_page_scraper': true,
   };
 
-  // Real Data Collections (Backed by SQLite Engine - Zero Dummy Data)
+  // Real Data Collections (Backed by JOO CLOUD v3.0 Enterprise)
   List<AppUser> users = [];
   List<DownloadEntry> downloads = [];
   List<BypassLogEntry> bypassLogs = [];
@@ -1595,9 +1410,9 @@ class AppState extends ChangeNotifier {
   List<BroadcastAnnouncement> announcements = [];
   List<AdAnalyticsEvent> adEvents = [];
   List<UserActivityLogEntry> userActivityLogs = [];
-  DateTime? lastSqliteSyncAt;
-  bool isSyncingSqlite = false;
-  String sqliteSyncStatusText = 'متزامن محلياً وجاهز للمزامنة السحابية';
+  DateTime? lastCloudSyncAt;
+  bool isSyncingCloud = false;
+  String cloudSyncStatusText = 'متصل بذاكرة JOO CLOUD السريعة وجاهز للمزامنة';
   List<String> customFolders = ['عام', 'موسيقى', 'دروس وتعليم', 'مقاطع قصيرة'];
 
   // Active Download Tasks
@@ -1606,7 +1421,7 @@ class AppState extends ChangeNotifier {
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
     await db.init(_prefs!);
-    _loadFromSqlite();
+    _loadFromCloudCache();
 
     // Ensure Fixed Core Admin Account Exists (Zero experimental/dummy accounts)
     final adminHash = SecurityShieldService.hashSecret(kAdminPassword);
@@ -1730,7 +1545,7 @@ class AppState extends ChangeNotifier {
     return false;
   }
 
-  void _loadFromSqlite() {
+  void _loadFromCloudCache() {
     try {
       users = db.queryTable('users').map((e) => AppUser.fromJson(e)).toList();
       downloads = db
@@ -2320,11 +2135,11 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> syncAccountsAndActivityWithSqlite() async {
-    if (isSyncingSqlite) return false;
-    isSyncingSqlite = true;
-    sqliteSyncStatusText =
-        'جاري المزامنة مع سيرفر JOO CLOUD ($kJooCloudProjectId) و SQLite...';
+  Future<bool> syncAllWithJooCloud() async {
+    if (isSyncingCloud) return false;
+    isSyncingCloud = true;
+    cloudSyncStatusText =
+        'جاري المزامنة الشاملة مع سيرفر JOO CLOUD ($kJooCloudProjectId)...';
     notifyListeners();
 
     try {
@@ -2335,106 +2150,72 @@ class AppState extends ChangeNotifier {
       await _saveSecurityEvents();
       await db.commitImmediate();
 
-      // 1. Sync all core collections to JOO CLOUD DATABASE (prj_a19edff7f9a64df51756)
-      try {
-        await JooCloudDatabaseClient.upsertDocument(
-          collection: 'dovid_users',
-          docId: 'users_master',
-          document: {
-            'project_id': kJooCloudProjectId,
-            'users': users.map((u) => u.toJson()).toList(),
-            'synced_at': DateTime.now().toIso8601String(),
-          },
-        );
-        await JooCloudDatabaseClient.upsertDocument(
-          collection: 'dovid_activity_logs',
-          docId: 'activity_master',
-          document: {
-            'project_id': kJooCloudProjectId,
-            'logs': userActivityLogs.take(120).map((a) => a.toJson()).toList(),
-            'synced_at': DateTime.now().toIso8601String(),
-          },
-        );
-        await JooCloudDatabaseClient.upsertDocument(
-          collection: 'dovid_downloads',
-          docId: 'downloads_master',
-          document: {
-            'project_id': kJooCloudProjectId,
-            'downloads': downloads.take(120).map((d) => d.toJson()).toList(),
-            'synced_at': DateTime.now().toIso8601String(),
-          },
-        );
-        final cloudUsers =
-            await JooCloudDatabaseClient.fetchCollection('dovid_users');
-        for (final doc in cloudUsers) {
-          if (doc['users'] is List) {
-            for (final ru in doc['users']) {
-              if (ru is Map) {
-                final uname = (ru['username'] ?? '').toString();
-                if (uname.isNotEmpty &&
-                    !users.any(
-                        (u) => u.username.toLowerCase() == uname.toLowerCase())) {
-                  users.add(AppUser.fromJson(Map<String, dynamic>.from(ru)));
-                }
-              }
-            }
-          }
-        }
-      } catch (_) {}
+      if (!JooCloudDatabaseClient.hasValidSecretKey) {
+        cloudSyncStatusText =
+            'تم الحفظ في الكاش المحلي • أدخل Secret Key (sk_...) في لوحة JOO CLOUD للمزامنة السحابية';
+        isSyncingCloud = false;
+        notifyListeners();
+        return false;
+      }
 
-      // 2. Also attempt remote SQLite sync with backend server
-      try {
-        final payload = {
-          'action': 'admin_sqlite_sync',
+      final pingOk = await JooCloudDatabaseClient.pingServer();
+      await JooCloudDatabaseClient.upsertDocument(
+        collection: 'dovid_users',
+        docId: 'users_master',
+        document: {
+          'project_id': kJooCloudProjectId,
           'users': users.map((u) => u.toJson()).toList(),
-          'activity_logs': userActivityLogs.take(100).map((a) => a.toJson()).toList(),
-          'downloads_count': downloads.length,
-          'timestamp': DateTime.now().toIso8601String(),
-        };
-        final res = await http
-            .post(
-              Uri.parse('$kApiEndpoint?action=admin_sqlite_sync'),
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode(payload),
-            )
-            .timeout(const Duration(seconds: 8));
-        if (res.statusCode == 200) {
-          final data = jsonDecode(res.body);
-          if (data is Map && data['remote_users'] is List) {
-            for (final ru in data['remote_users']) {
-              if (ru is Map) {
-                final uname = (ru['username'] ?? '').toString();
-                if (uname.isNotEmpty &&
-                    !users.any((u) =>
-                        u.username.toLowerCase() == uname.toLowerCase())) {
-                  users.add(AppUser(
-                    id: (ru['id'] ?? _genId()).toString(),
-                    username: uname,
-                    passwordHash: (ru['passwordHash'] ?? '').toString(),
-                    email: (ru['email'] ?? '').toString(),
-                    isAdmin: ru['isAdmin'] == true || ru['is_admin'] == 1,
-                    isVip: ru['isVip'] == true || ru['is_vip'] == 1,
-                    createdAt: DateTime.tryParse(
-                            (ru['created_at'] ?? '').toString()) ??
-                        DateTime.now(),
-                  ));
-                }
+          'synced_at': DateTime.now().toIso8601String(),
+        },
+      );
+      await JooCloudDatabaseClient.upsertDocument(
+        collection: 'dovid_activity_logs',
+        docId: 'activity_master',
+        document: {
+          'project_id': kJooCloudProjectId,
+          'logs': userActivityLogs.take(120).map((a) => a.toJson()).toList(),
+          'synced_at': DateTime.now().toIso8601String(),
+        },
+      );
+      await JooCloudDatabaseClient.upsertDocument(
+        collection: 'dovid_downloads',
+        docId: 'downloads_master',
+        document: {
+          'project_id': kJooCloudProjectId,
+          'downloads': downloads.take(120).map((d) => d.toJson()).toList(),
+          'synced_at': DateTime.now().toIso8601String(),
+        },
+      );
+      await JooCloudDatabaseClient.listCollections();
+
+      final cloudUsers =
+          await JooCloudDatabaseClient.fetchCollection('dovid_users');
+      for (final doc in cloudUsers) {
+        if (doc['users'] is List) {
+          for (final ru in doc['users']) {
+            if (ru is Map) {
+              final uname = (ru['username'] ?? '').toString();
+              if (uname.isNotEmpty &&
+                  !users.any(
+                      (u) => u.username.toLowerCase() == uname.toLowerCase())) {
+                users.add(AppUser.fromJson(Map<String, dynamic>.from(ru)));
               }
             }
-            await _saveUsers();
           }
         }
-      } catch (_) {}
+      }
+      await _saveUsers();
 
-      lastSqliteSyncAt = DateTime.now();
-      sqliteSyncStatusText =
-          'تمت المزامنة بنجاح (${users.length} حساب • ${userActivityLogs.length} نشاط)';
-      isSyncingSqlite = false;
+      lastCloudSyncAt = DateTime.now();
+      cloudSyncStatusText = pingOk
+          ? 'تمت المزامنة السحابية مع JOO CLOUD (${users.length} حساب • ${userActivityLogs.length} نشاط • ${JooCloudDatabaseClient.lastLatencyMs}ms)'
+          : 'تم الحفظ محلياً • ${JooCloudDatabaseClient.lastCloudResponse}';
+      isSyncingCloud = false;
       notifyListeners();
-      return true;
-    } catch (_) {
-      sqliteSyncStatusText = 'تم الحفظ في محرك SQLite المحلي بنجاح';
-      isSyncingSqlite = false;
+      return pingOk;
+    } catch (e) {
+      cloudSyncStatusText = 'تعذر الاتصال بالسيرفر وتم الحفظ محلياً: $e';
+      isSyncingCloud = false;
       notifyListeners();
       return false;
     }
@@ -2532,7 +2313,7 @@ class AppState extends ChangeNotifier {
     _saveUsers();
     recordUserActivity(
       actionType: 'login',
-      details: 'تسجيل دخول الحساب (${user.username}) ومزامنة SQLite',
+      details: 'تسجيل دخول الحساب (${user.username}) ومزامنة JOO CLOUD',
     );
     notifyListeners();
     return null;
@@ -2572,7 +2353,7 @@ class AppState extends ChangeNotifier {
     _saveUsers();
     recordUserActivity(
       actionType: 'register',
-      details: 'إنشاء حساب جديد (${user.username}) وحفظه في SQLite',
+      details: 'إنشاء حساب جديد (${user.username}) وحفظه في JOO CLOUD',
     );
     notifyListeners();
     return null;
@@ -5810,6 +5591,29 @@ class DownloadService {
   }
 
   /// Trims a video or audio clip between [startSec] and [endSec] (offline or via HTTP Range stream)
+  static const MethodChannel _mediaTrimmerChannel =
+      MethodChannel('com.dovid.app/media_trimmer');
+
+  static Future<Map<String, dynamic>> getLocalMediaInfo(
+    String path, {
+    String platform = '',
+  }) async {
+    try {
+      final headers = <String, String>{
+        'User-Agent': _pickUserAgent(0),
+        if (platform == 'tiktok') 'Referer': 'https://www.tiktok.com/',
+        if (platform == 'instagram') 'Referer': 'https://www.instagram.com/',
+        if (platform == 'facebook') 'Referer': 'https://www.facebook.com/',
+      };
+      final res = await _mediaTrimmerChannel.invokeMethod('getMediaInfo', {
+        'path': path,
+        'headers': headers,
+      });
+      if (res is Map) return Map<String, dynamic>.from(res);
+    } catch (_) {}
+    return {'ok': false};
+  }
+
   static Future<DownloadEntry?> trimAndExportVideoClip({
     required DownloadEntry sourceEntry,
     required int startSec,
@@ -5821,11 +5625,11 @@ class DownloadService {
     final s = AppState();
     final safeTotal = totalDurationSec > 0 ? totalDurationSec : 60;
     final startRatio = (startSec / safeTotal).clamp(0.0, 0.95);
-    final endRatio = (endSec / safeTotal).clamp(startRatio + 0.05, 1.0);
+    final endRatio = (endSec / safeTotal).clamp(startRatio + 0.02, 1.0);
     final clipDurationSec = (endSec - startSec).clamp(1, 7200);
 
     final targetDir = await _resolveWritableDirectory(isAudio: exportAsAudio);
-    final ext = exportAsAudio ? 'mp3' : 'mp4';
+    final ext = exportAsAudio ? 'm4a' : 'mp4';
     final stamp =
         DateTime.now().millisecondsSinceEpoch.toString().substring(7);
     final baseTitle = customClipTitle.trim().isNotEmpty
@@ -5841,32 +5645,82 @@ class DownloadService {
     final outPath = '${targetDir.path}/$safeFile';
 
     int writtenBytes = 0;
+    bool usedNativeMuxer = false;
 
-    // Case 1: Source file already exists locally offline -> slice directly from disk
-    if (sourceEntry.localPath.isNotEmpty) {
+    // Case 1: Native Android MediaExtractor + MediaMuxer (Keyframe-accurate!)
+    final sourcePathOrUrl = sourceEntry.localPath.isNotEmpty &&
+            await File(sourceEntry.localPath).exists()
+        ? sourceEntry.localPath
+        : (exportAsAudio && sourceEntry.audioLink.isNotEmpty
+            ? sourceEntry.audioLink
+            : (sourceEntry.hdLink.isNotEmpty
+                ? sourceEntry.hdLink
+                : sourceEntry.downloadLink));
+
+    if (sourcePathOrUrl.isNotEmpty) {
       try {
-        final inFile = File(sourceEntry.localPath);
-        if (await inFile.exists()) {
-          final allBytes = await inFile.readAsBytes();
-          if (allBytes.isNotEmpty) {
-            final startByte = (allBytes.length * startRatio).floor();
-            final endByte =
-                (allBytes.length * endRatio).ceil().clamp(startByte + 1, allBytes.length);
-            // Preserve MP4/MP3 header prefix + selected range for playable container structure
-            final headerLen = min(65536, startByte);
-            final outBytes = <int>[
-              ...allBytes.sublist(0, headerLen),
-              ...allBytes.sublist(startByte, endByte),
-            ];
-            final outFile = File(outPath);
-            await outFile.writeAsBytes(outBytes, flush: true);
-            writtenBytes = outBytes.length;
+        final trimHeaders = <String, String>{
+          'User-Agent': _pickUserAgent(0),
+          if (sourceEntry.platform == 'tiktok') 'Referer': 'https://www.tiktok.com/',
+          if (sourceEntry.platform == 'instagram') 'Referer': 'https://www.instagram.com/',
+          if (sourceEntry.platform == 'facebook') 'Referer': 'https://www.facebook.com/',
+        };
+        final nativeRes = await _mediaTrimmerChannel.invokeMethod('trimMedia', {
+          'inputPath': sourcePathOrUrl,
+          'outputPath': outPath,
+          'startMs': startSec * 1000,
+          'endMs': endSec * 1000,
+          'audioOnly': exportAsAudio,
+          'headers': trimHeaders,
+        });
+        if (nativeRes is Map && nativeRes['ok'] == true) {
+          final outFile = File(outPath);
+          if (await outFile.exists()) {
+            writtenBytes = await outFile.length();
+            usedNativeMuxer = writtenBytes > 0;
           }
         }
       } catch (_) {}
     }
 
-    // Case 2: Stream clip from downloadLink using HTTP Range or bounded stream
+    // Case 2: Memory-safe RandomAccessFile slicing for local files if native muxer failed
+    if (writtenBytes == 0 && sourceEntry.localPath.isNotEmpty) {
+      try {
+        final inFile = File(sourceEntry.localPath);
+        if (await inFile.exists()) {
+          final totalLen = await inFile.length();
+          if (totalLen > 0) {
+            final startByte = (totalLen * startRatio).floor();
+            final endByte = (totalLen * endRatio)
+                .ceil()
+                .clamp(startByte + 1, totalLen);
+            final headerLen = min(65536, startByte);
+            final raf = await inFile.open();
+            final outFile = File(outPath);
+            final sink = outFile.openWrite();
+            if (headerLen > 0) {
+              await raf.setPosition(0);
+              sink.add(await raf.read(headerLen));
+              writtenBytes += headerLen;
+            }
+            await raf.setPosition(startByte);
+            int remaining = endByte - startByte;
+            while (remaining > 0) {
+              final chunk = await raf.read(min(262144, remaining));
+              if (chunk.isEmpty) break;
+              sink.add(chunk);
+              writtenBytes += chunk.length;
+              remaining -= chunk.length;
+            }
+            await raf.close();
+            await sink.flush();
+            await sink.close();
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Case 3: Stream clip from downloadLink using HTTP Range or bounded stream
     if (writtenBytes == 0) {
       final targetUrl = exportAsAudio && sourceEntry.audioLink.isNotEmpty
           ? sourceEntry.audioLink
@@ -5889,8 +5743,9 @@ class DownloadService {
             final contentLen = res.contentLength > 0
                 ? res.contentLength
                 : 8 * 1024 * 1024;
-            final maxClipBytes =
-                (contentLen * (endRatio - startRatio)).round().clamp(256 * 1024, 50 * 1024 * 1024);
+            final maxClipBytes = (contentLen * (endRatio - startRatio))
+                .round()
+                .clamp(256 * 1024, 50 * 1024 * 1024);
             await for (final chunk in res) {
               sink.add(chunk);
               writtenBytes += chunk.length;
@@ -5904,28 +5759,31 @@ class DownloadService {
           try {
             await sink?.close();
           } catch (_) {}
-          client?.close();
+          try {
+            client?.close();
+          } catch (_) {}
         }
       }
     }
 
-    if (writtenBytes == 0) {
-      // Fallback: create a valid local clip entry referencing the segment parameters
+    if (writtenBytes > 0) {
       try {
-        final outFile = File(outPath);
-        await outFile.writeAsBytes(utf8.encode('DOViD_CLIP_STREAM'), flush: true);
-        writtenBytes = 1024 * 512;
+        await _mediaTrimmerChannel.invokeMethod('scanFile', {'path': outPath});
       } catch (_) {}
     }
 
+    if (writtenBytes == 0) {
+      return null;
+    }
+
     final clippedEntry = DownloadEntry(
-      id: '${DateTime.now().microsecondsSinceEpoch}_clip',
+      id: s._genId(),
       userId: s.currentUser?.id ?? 'guest',
       url: sourceEntry.url,
       title: baseTitle,
-      description:
-          'مقطع مقصوص (${formatDurationSeconds(startSec)} إلى ${formatDurationSeconds(endSec)}) • ${sourceEntry.description}',
       author: sourceEntry.author,
+      description:
+          '${usedNativeMuxer ? "قص HD دقيق" : "مقطع مقصوص"} (${formatDurationSeconds(startSec)} ← ${formatDurationSeconds(endSec)})',
       thumbnailUrl: sourceEntry.thumbnailUrl,
       durationText: formatDurationSeconds(clipDurationSec),
       fileSizeText: formatBytes(writtenBytes),
@@ -5934,10 +5792,10 @@ class DownloadService {
       hdLink: sourceEntry.hdLink,
       audioLink: sourceEntry.audioLink,
       localPath: outPath,
-      quality: exportAsAudio ? 'audio' : sourceEntry.quality,
+      quality: exportAsAudio ? 'M4A/MP3 Clip' : 'HD Trimmed MP4',
       status: 'success',
-      strategy: 'video_trimmer',
-      folderName: sourceEntry.folderName,
+      strategy: usedNativeMuxer ? 'native_media_muxer' : 'video_trimmer_pro',
+      folderName: exportAsAudio ? 'موسيقى' : 'مقاطع قصيرة',
       createdAt: DateTime.now(),
       completedAt: DateTime.now(),
     );
@@ -5945,10 +5803,10 @@ class DownloadService {
     s.downloads.insert(0, clippedEntry);
     await s._saveDownloads();
     s.recordUserActivity(
+      platform: sourceEntry.platform,
       actionType: 'trim_video',
       details:
-          'قص فيديو ($baseTitle) من ${formatDurationSeconds(startSec)} إلى ${formatDurationSeconds(endSec)}',
-      platform: sourceEntry.platform,
+          'قص وتصدير "$baseTitle" (${formatDurationSeconds(startSec)} إلى ${formatDurationSeconds(endSec)}) • ${formatBytes(writtenBytes)}',
     );
     s.notifyListeners();
     return clippedEntry;
@@ -9215,15 +9073,25 @@ void showVideoTrimmerModal(BuildContext context, DownloadEntry entry) {
     return int.tryParse(raw) ?? 120;
   }
 
-  final totalSec = max(15, parseDurationToSec(entry.durationText));
+  int totalSec = max(15, parseDurationToSec(entry.durationText));
   RangeValues range = RangeValues(0, min(30.0, totalSec.toDouble()));
   bool exportAudioOnly = false;
   bool trimming = false;
+  bool probedMedia = false;
+  String mediaResolution = '';
   final titleCtrl = TextEditingController(
     text: entry.title.isEmpty
         ? 'مقطع ${entry.platform.toUpperCase()}'
         : '${entry.title} - مقطع مقصوص',
   );
+  final startInputCtrl = TextEditingController(text: '00:00');
+  final endInputCtrl =
+      TextEditingController(text: formatDurationSeconds(range.end.round()));
+
+  void syncInputsFromRange() {
+    startInputCtrl.text = formatDurationSeconds(range.start.round());
+    endInputCtrl.text = formatDurationSeconds(range.end.round());
+  }
 
   showModalBottomSheet(
     context: context,
@@ -9236,9 +9104,58 @@ void showVideoTrimmerModal(BuildContext context, DownloadEntry entry) {
       final accent = AppState().accentColor;
       return StatefulBuilder(
         builder: (ctx, setModalState) {
+          if (!probedMedia) {
+            probedMedia = true;
+            final probeTarget = entry.localPath.isNotEmpty
+                ? entry.localPath
+                : (entry.hdLink.isNotEmpty
+                    ? entry.hdLink
+                    : entry.downloadLink);
+            if (probeTarget.isNotEmpty) {
+              DownloadService.getLocalMediaInfo(
+                probeTarget,
+                platform: entry.platform,
+              ).then((info) {
+                if (info['ok'] == true && ctx.mounted) {
+                  final durMs = (info['durationMs'] as num?)?.toInt() ?? 0;
+                  final w = (info['width'] as num?)?.toInt() ?? 0;
+                  final h = (info['height'] as num?)?.toInt() ?? 0;
+                  if (durMs > 2000) {
+                    setModalState(() {
+                      totalSec = max(5, (durMs / 1000).round());
+                      range = RangeValues(
+                        range.start.clamp(0.0, (totalSec - 1).toDouble()),
+                        min(range.end, totalSec.toDouble())
+                            .clamp(1.0, totalSec.toDouble()),
+                      );
+                      if (w > 0 && h > 0) mediaResolution = '${w}x$h';
+                      syncInputsFromRange();
+                    });
+                  }
+                }
+              });
+            }
+          }
+
           final startSec = range.start.round();
           final endSec = range.end.round();
           final netSec = max(1, endSec - startSec);
+          final startPct = (startSec / totalSec).clamp(0.0, 1.0);
+          final widthPct = (netSec / totalSec).clamp(0.02, 1.0 - startPct);
+          final estSizeMb = exportAudioOnly
+              ? (netSec * 0.024).toStringAsFixed(2)
+              : (netSec * 0.45).toStringAsFixed(1);
+
+          void applyManualTime() {
+            final sVal = parseDurationToSec(startInputCtrl.text)
+                .clamp(0, totalSec - 1);
+            final eVal = parseDurationToSec(endInputCtrl.text)
+                .clamp(sVal + 1, totalSec);
+            setModalState(() {
+              range = RangeValues(sVal.toDouble(), eVal.toDouble());
+              syncInputsFromRange();
+            });
+          }
 
           return Padding(
             padding: EdgeInsets.fromLTRB(
@@ -9257,11 +9174,21 @@ void showVideoTrimmerModal(BuildContext context, DownloadEntry entry) {
                       const Icon(Icons.content_cut_rounded,
                           color: AppColors.warning, size: 22),
                       const SizedBox(width: 8),
-                      const Expanded(
-                        child: Text(
-                          'استوديو قص وتقطيع الفيديو الذكي (Video Trimmer)',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w900, fontSize: 15),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'استوديو قص وتقطيع الفيديو الاحترافي Pro',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w900, fontSize: 15),
+                            ),
+                            Text(
+                              'محرك MediaMuxer الأصلي • المدة الكلية: ${formatDurationSeconds(totalSec)}${mediaResolution.isNotEmpty ? " • $mediaResolution" : ""}',
+                              style: const TextStyle(
+                                  fontSize: 10.5, color: AppColors.textMuted),
+                            ),
+                          ],
                         ),
                       ),
                       IconButton(
@@ -9270,7 +9197,7 @@ void showVideoTrimmerModal(BuildContext context, DownloadEntry entry) {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
                   TextField(
                     controller: titleCtrl,
                     decoration: const InputDecoration(
@@ -9292,18 +9219,55 @@ void showVideoTrimmerModal(BuildContext context, DownloadEntry entry) {
                           mainAxisAlignment: MainAxisAlignment.spaceAround,
                           children: [
                             _TimerBox(
-                              value: formatDurationSeconds(max(1, startSec)),
+                              value: formatDurationSeconds(startSec),
                               label: 'بداية القص',
                             ),
                             _TimerBox(
                               value: formatDurationSeconds(netSec),
-                              label: 'مدة المقطع الصافي',
+                              label: 'المدة الصافية (~$estSizeMb MB)',
                             ),
                             _TimerBox(
                               value: formatDurationSeconds(endSec),
                               label: 'نهاية القص',
                             ),
                           ],
+                        ),
+                        const SizedBox(height: 10),
+                        // Visual Timeline Bar
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final barW = constraints.maxWidth;
+                            return Container(
+                              height: 18,
+                              width: barW,
+                              decoration: BoxDecoration(
+                                color: AppColors.bg,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: AppColors.border),
+                              ),
+                              child: Stack(
+                                children: [
+                                  Positioned(
+                                    left: barW * startPct,
+                                    width: max(8.0, barW * widthPct),
+                                    top: 2,
+                                    bottom: 2,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            AppColors.warning,
+                                            accent,
+                                          ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
                         ),
                         RangeSlider(
                           values: range,
@@ -9312,45 +9276,116 @@ void showVideoTrimmerModal(BuildContext context, DownloadEntry entry) {
                           divisions: max(10, totalSec),
                           activeColor: AppColors.warning,
                           labels: RangeLabels(
-                            formatDurationSeconds(max(1, startSec)),
+                            formatDurationSeconds(startSec),
                             formatDurationSeconds(endSec),
                           ),
                           onChanged: (v) {
                             if (v.end - v.start >= 1) {
-                              setModalState(() => range = v);
+                              setModalState(() {
+                                range = v;
+                                syncInputsFromRange();
+                              });
                             }
                           },
                         ),
+                        // Manual exact time input row
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: startInputCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'من (MM:SS)',
+                                  isDense: true,
+                                ),
+                                onSubmitted: (_) => applyManualTime(),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TextField(
+                                controller: endInputCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'إلى (MM:SS)',
+                                  isDense: true,
+                                ),
+                                onSubmitted: (_) => applyManualTime(),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            ElevatedButton(
+                              onPressed: applyManualTime,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.surfaceLighter,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 12),
+                              ),
+                              child: const Text('تطبيق',
+                                  style: TextStyle(fontSize: 11)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
                         Wrap(
                           spacing: 6,
                           runSpacing: 6,
                           children: [
                             ActionChip(
-                              label: const Text('أول 15 ث (Reels)',
+                              label: const Text('Reels 15ث',
                                   style: TextStyle(fontSize: 10.5)),
-                              onPressed: () => setModalState(() => range =
-                                  RangeValues(
-                                      0, min(15.0, totalSec.toDouble()))),
+                              onPressed: () => setModalState(() {
+                                range = RangeValues(
+                                    0, min(15.0, totalSec.toDouble()));
+                                syncInputsFromRange();
+                              }),
                             ),
                             ActionChip(
-                              label: const Text('أول 30 ث (Story)',
+                              label: const Text('Story 30ث',
                                   style: TextStyle(fontSize: 10.5)),
-                              onPressed: () => setModalState(() => range =
-                                  RangeValues(
-                                      0, min(30.0, totalSec.toDouble()))),
+                              onPressed: () => setModalState(() {
+                                range = RangeValues(
+                                    0, min(30.0, totalSec.toDouble()));
+                                syncInputsFromRange();
+                              }),
                             ),
                             ActionChip(
-                              label: const Text('أول 60 ث (TikTok)',
+                              label: const Text('TikTok/Shorts 60ث',
                                   style: TextStyle(fontSize: 10.5)),
-                              onPressed: () => setModalState(() => range =
-                                  RangeValues(
-                                      0, min(60.0, totalSec.toDouble()))),
+                              onPressed: () => setModalState(() {
+                                range = RangeValues(
+                                    0, min(60.0, totalSec.toDouble()));
+                                syncInputsFromRange();
+                              }),
                             ),
                             ActionChip(
                               label: const Text('النصف الأول',
                                   style: TextStyle(fontSize: 10.5)),
-                              onPressed: () => setModalState(() => range =
-                                  RangeValues(0, (totalSec / 2).toDouble())),
+                              onPressed: () => setModalState(() {
+                                range = RangeValues(
+                                    0, max(1.0, (totalSec / 2).toDouble()));
+                                syncInputsFromRange();
+                              }),
+                            ),
+                            ActionChip(
+                              label: const Text('النصف الثاني',
+                                  style: TextStyle(fontSize: 10.5)),
+                              onPressed: () => setModalState(() {
+                                range = RangeValues(
+                                    (totalSec / 2).floorToDouble(),
+                                    totalSec.toDouble());
+                                syncInputsFromRange();
+                              }),
+                            ),
+                            ActionChip(
+                              label: const Text('ذروة الوسط',
+                                  style: TextStyle(fontSize: 10.5)),
+                              onPressed: () => setModalState(() {
+                                final s25 = (totalSec * 0.25).floorToDouble();
+                                final e75 = max(s25 + 1,
+                                    (totalSec * 0.75).ceilToDouble());
+                                range = RangeValues(s25, e75);
+                                syncInputsFromRange();
+                              }),
                             ),
                           ],
                         ),
@@ -9363,15 +9398,33 @@ void showVideoTrimmerModal(BuildContext context, DownloadEntry entry) {
                     children: [
                       Row(
                         children: [
-                          const Text('ضبط البداية:',
+                          const Text('البداية:',
                               style: TextStyle(
                                   fontSize: 10.5, color: AppColors.textMuted)),
+                          TextButton(
+                            onPressed: () {
+                              final ns =
+                                  (range.start - 5).clamp(0.0, range.end - 1);
+                              setModalState(() {
+                                range = RangeValues(ns, range.end);
+                                syncInputsFromRange();
+                              });
+                            },
+                            style: TextButton.styleFrom(
+                                minimumSize: Size.zero,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 6)),
+                            child: const Text('-5ث',
+                                style: TextStyle(fontSize: 11)),
+                          ),
                           IconButton(
                             onPressed: () {
                               final ns =
                                   (range.start - 1).clamp(0.0, range.end - 1);
-                              setModalState(
-                                  () => range = RangeValues(ns, range.end));
+                              setModalState(() {
+                                range = RangeValues(ns, range.end);
+                                syncInputsFromRange();
+                              });
                             },
                             icon: const Icon(Icons.remove_circle_outline,
                                 size: 17),
@@ -9380,8 +9433,10 @@ void showVideoTrimmerModal(BuildContext context, DownloadEntry entry) {
                             onPressed: () {
                               final ns =
                                   (range.start + 1).clamp(0.0, range.end - 1);
-                              setModalState(
-                                  () => range = RangeValues(ns, range.end));
+                              setModalState(() {
+                                range = RangeValues(ns, range.end);
+                                syncInputsFromRange();
+                              });
                             },
                             icon:
                                 const Icon(Icons.add_circle_outline, size: 17),
@@ -9390,15 +9445,17 @@ void showVideoTrimmerModal(BuildContext context, DownloadEntry entry) {
                       ),
                       Row(
                         children: [
-                          const Text('ضبط النهاية:',
+                          const Text('النهاية:',
                               style: TextStyle(
                                   fontSize: 10.5, color: AppColors.textMuted)),
                           IconButton(
                             onPressed: () {
                               final ne = (range.end - 1)
                                   .clamp(range.start + 1, totalSec.toDouble());
-                              setModalState(
-                                  () => range = RangeValues(range.start, ne));
+                              setModalState(() {
+                                range = RangeValues(range.start, ne);
+                                syncInputsFromRange();
+                              });
                             },
                             icon: const Icon(Icons.remove_circle_outline,
                                 size: 17),
@@ -9407,11 +9464,29 @@ void showVideoTrimmerModal(BuildContext context, DownloadEntry entry) {
                             onPressed: () {
                               final ne = (range.end + 1)
                                   .clamp(range.start + 1, totalSec.toDouble());
-                              setModalState(
-                                  () => range = RangeValues(range.start, ne));
+                              setModalState(() {
+                                range = RangeValues(range.start, ne);
+                                syncInputsFromRange();
+                              });
                             },
                             icon:
                                 const Icon(Icons.add_circle_outline, size: 17),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              final ne = (range.end + 5)
+                                  .clamp(range.start + 1, totalSec.toDouble());
+                              setModalState(() {
+                                range = RangeValues(range.start, ne);
+                                syncInputsFromRange();
+                              });
+                            },
+                            style: TextButton.styleFrom(
+                                minimumSize: Size.zero,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 6)),
+                            child: const Text('+5ث',
+                                style: TextStyle(fontSize: 11)),
                           ),
                         ],
                       ),
@@ -9422,11 +9497,11 @@ void showVideoTrimmerModal(BuildContext context, DownloadEntry entry) {
                     value: exportAudioOnly,
                     activeColor: accent,
                     title: const Text(
-                        'تصدير المقطع المقصوص كملف صوتي / نغمة MP3',
+                        'استخراج الصوت فقط من المقطع المقصوص (M4A/MP3)',
                         style: TextStyle(
                             fontSize: 12, fontWeight: FontWeight.w700)),
                     subtitle: const Text(
-                        'يتم حفظ المقطع بالهاتف ومزامنة بياناته مع سيرفر JOO CLOUD تلقائياً',
+                        'يتم الحفظ بالهاتف ومزامنة السجل مع JOO CLOUD تلقائياً',
                         style:
                             TextStyle(fontSize: 10, color: AppColors.textMuted)),
                     onChanged: (v) =>
@@ -9451,15 +9526,33 @@ void showVideoTrimmerModal(BuildContext context, DownloadEntry entry) {
                               );
                               if (!ctx.mounted) return;
                               Navigator.pop(ctx);
-                              if (clipped != null) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                        'تم قص وحفظ المقطع بنجاح في الاستوديو:\n${clipped.localPath}'),
-                                    backgroundColor: AppColors.success,
-                                    duration: const Duration(seconds: 4),
-                                  ),
-                                );
+                              if (context.mounted) {
+                                if (clipped != null) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                          'تم قص وحفظ المقطع بنجاح (${clipped.fileSizeText})'),
+                                      backgroundColor: AppColors.success,
+                                      duration: const Duration(seconds: 5),
+                                      action: SnackBarAction(
+                                        label: 'تشغيل الآن',
+                                        textColor: Colors.white,
+                                        onPressed: () =>
+                                            showCustomOfflineMediaPlayerModal(
+                                                context, clipped),
+                                      ),
+                                    ),
+                                  );
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                          'تعذر قص المقطع. تأكد من الاتصال أو قم بتنزيل الفيديو أولاً ثم قصه.'),
+                                      backgroundColor: AppColors.error,
+                                      duration: Duration(seconds: 4),
+                                    ),
+                                  );
+                                }
                               }
                             },
                       icon: Icon(
@@ -9471,8 +9564,8 @@ void showVideoTrimmerModal(BuildContext context, DownloadEntry entry) {
                       ),
                       label: Text(
                         trimming
-                            ? 'جاري قص وتصدير المقطع...'
-                            : 'قص وحفظ المقطع الآن في الاستوديو',
+                            ? 'جاري القص والمعالجة بمحرك MediaMuxer...'
+                            : 'قص وحفظ المقطع بدقة HD الآن',
                         style: const TextStyle(
                             color: Colors.black,
                             fontWeight: FontWeight.w900,
@@ -11864,7 +11957,7 @@ class _MiniTag extends StatelessWidget {
 }
 
 // ============================================================================
-// SETTINGS SCREEN (Typography, Theme, PIN Security, SQLite Status & VIP API)
+// SETTINGS SCREEN (Typography, Theme, PIN Security, JOO CLOUD Status & VIP API)
 // ============================================================================
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -12558,7 +12651,7 @@ class _AdminScreenState extends State<AdminScreen> {
                         onTap: () => setState(() => _tab = 1)),
                     const SizedBox(width: 6),
                     _AdminTab(
-                        label: '3. محرك SQLite',
+                        label: '3. سحابة JOO CLOUD',
                         icon: Icons.storage_rounded,
                         active: _tab == 2,
                         onTap: () => setState(() => _tab = 2)),
@@ -12609,7 +12702,7 @@ class _AdminScreenState extends State<AdminScreen> {
                 children: const [
                   _AdminCommandCenterTab(),
                   _AdminGoogleAdsStudioTab(),
-                  _AdminSqliteEngineTab(),
+                  _AdminJooCloudEngineTab(),
                   _AdminUsersManagerTab(),
                   _AdminGlobalDownloadsTab(),
                   _AdminBackgroundEnginesTab(),
@@ -13200,7 +13293,7 @@ class _AdminGoogleAdsStudioTabState extends State<_AdminGoogleAdsStudioTab> {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text(
-                                'تم حفظ وتفعيل معرفات Google Ads في SQLite بنجاح'),
+                                'تم حفظ وتفعيل معرفات Google Ads ومزامنتها في JOO CLOUD بنجاح'),
                             backgroundColor: AppColors.success,
                           ),
                         );
@@ -13229,32 +13322,46 @@ class _AdminGoogleAdsStudioTabState extends State<_AdminGoogleAdsStudioTab> {
   }
 }
 
-// TAB 3: SQLITE DATABASE ENGINE & BACKUP MANAGER
-class _AdminSqliteEngineTab extends StatefulWidget {
-  const _AdminSqliteEngineTab();
+// TAB 3: JOO CLOUD v3.0 ENTERPRISE ENGINE & BACKUP MANAGER
+class _AdminJooCloudEngineTab extends StatefulWidget {
+  const _AdminJooCloudEngineTab();
 
   @override
-  State<_AdminSqliteEngineTab> createState() => _AdminSqliteEngineTabState();
+  State<_AdminJooCloudEngineTab> createState() =>
+      _AdminJooCloudEngineTabState();
 }
 
-class _AdminSqliteEngineTabState extends State<_AdminSqliteEngineTab> {
-  int dbBytes = 0;
+class _AdminJooCloudEngineTabState extends State<_AdminJooCloudEngineTab> {
+  int cacheBytes = 0;
+  bool testingPing = false;
+  bool loadingCollections = false;
+  late TextEditingController secretKeyCtrl;
 
   @override
   void initState() {
     super.initState();
+    secretKeyCtrl =
+        TextEditingController(text: JooCloudDatabaseClient.secretKey);
     _refreshSize();
   }
 
+  @override
+  void dispose() {
+    secretKeyCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _refreshSize() async {
-    final sz = await AppState().db.getDatabaseSizeBytes();
-    if (mounted) setState(() => dbBytes = sz);
+    final sz = await AppState().db.getCacheSizeBytes();
+    if (mounted) setState(() => cacheBytes = sz);
   }
 
   @override
   Widget build(BuildContext context) {
     final s = AppState();
     final db = s.db;
+    final hasSk = JooCloudDatabaseClient.hasValidSecretKey;
+
     return ListView(
       padding: const EdgeInsets.all(14),
       children: [
@@ -13263,18 +13370,23 @@ class _AdminSqliteEngineTabState extends State<_AdminSqliteEngineTab> {
           decoration: BoxDecoration(
             color: AppColors.surface,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: AppColors.guest.withOpacity(0.4)),
+            border: Border.all(
+                color: (hasSk ? AppColors.success : AppColors.warning)
+                    .withOpacity(0.45)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.cloud_done_rounded, color: AppColors.admin),
-                  SizedBox(width: 8),
-                  Expanded(
+                  Icon(
+                    hasSk ? Icons.cloud_done_rounded : Icons.cloud_sync_rounded,
+                    color: hasSk ? AppColors.success : AppColors.warning,
+                  ),
+                  const SizedBox(width: 8),
+                  const Expanded(
                     child: Text(
-                      'سيرفر التخزين السحابي JOO CLOUD DATABASE + SQLite WAL',
+                      'سحابة JOO CLOUD v3.0 Enterprise (التخزين السحابي الكامل)',
                       style: TextStyle(
                           fontWeight: FontWeight.w900, fontSize: 13.5),
                     ),
@@ -13293,7 +13405,7 @@ class _AdminSqliteEngineTabState extends State<_AdminSqliteEngineTab> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'بيانات الربط السحابي النشط (JOO CLOUD SERVER):',
+                      'بيانات الربط السحابي النشط (HMAC-SHA256 + SHA256):',
                       style: TextStyle(
                           fontWeight: FontWeight.w900,
                           fontSize: 11.5,
@@ -13301,39 +13413,72 @@ class _AdminSqliteEngineTabState extends State<_AdminSqliteEngineTab> {
                     ),
                     const SizedBox(height: 6),
                     _InfoRow('معرف المشروع (Project ID)', kJooCloudProjectId),
-                    _InfoRow(
-                        'مفتاح التخزين (Public Key)',
+                    _InfoRow('Public Key (Full)',
                         '${kJooCloudPublicKey.substring(0, 18)}...'),
-                    _InfoRow('حالة السيرفر السحابي',
+                    _InfoRow('Read-Only Key',
+                        '${kJooCloudReadOnlyKey.substring(0, 18)}...'),
+                    _InfoRow('زمن الاستجابة (Ping)',
+                        '${JooCloudDatabaseClient.lastLatencyMs} ms'),
+                    _InfoRow('حالة السيرفر',
                         JooCloudDatabaseClient.lastCloudResponse),
-                    _InfoRow('السجلات المتزامنة سحابياً',
-                        '${JooCloudDatabaseClient.syncedDocumentsCount} دفعة مشفرة'),
+                    _InfoRow('الدفعات المتزامنة',
+                        '${JooCloudDatabaseClient.syncedDocumentsCount} سجل'),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: secretKeyCtrl,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'المفتاح السري للمشروع (Secret Key: sk_...)',
+                        hintText: 'الصق sk_... من لوحة JOO CLOUD هنا',
+                        prefixIcon: Icon(Icons.vpn_key_rounded),
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     Row(
                       children: [
                         Expanded(
                           child: ElevatedButton.icon(
-                            onPressed: () async {
-                              final ok =
-                                  await JooCloudDatabaseClient.pingServer();
-                              if (mounted) setState(() {});
-                              if (!context.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                      JooCloudDatabaseClient.lastCloudResponse),
-                                  backgroundColor:
-                                      ok ? AppColors.success : AppColors.guest,
-                                ),
-                              );
-                            },
-                            icon: const Icon(Icons.wifi_tethering_rounded,
-                                size: 15, color: Colors.white),
-                            label: const Text('فحص اتصال JOO CLOUD',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800)),
+                            onPressed: testingPing
+                                ? null
+                                : () async {
+                                    setState(() => testingPing = true);
+                                    await JooCloudDatabaseClient.saveSecretKey(
+                                        secretKeyCtrl.text);
+                                    final ok =
+                                        await JooCloudDatabaseClient.pingServer();
+                                    if (ok) {
+                                      await JooCloudDatabaseClient
+                                          .listCollections();
+                                    }
+                                    if (!mounted) return;
+                                    setState(() => testingPing = false);
+                                    if (!context.mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(JooCloudDatabaseClient
+                                            .lastCloudResponse),
+                                        backgroundColor: ok
+                                            ? AppColors.success
+                                            : AppColors.warning,
+                                      ),
+                                    );
+                                  },
+                            icon: Icon(
+                              testingPing
+                                  ? Icons.hourglass_top_rounded
+                                  : Icons.wifi_tethering_rounded,
+                              size: 15,
+                              color: Colors.white,
+                            ),
+                            label: Text(
+                              testingPing
+                                  ? 'جاري الفحص...'
+                                  : 'حفظ واختبار الاتصال (Ping)',
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800),
+                            ),
                             style: ElevatedButton.styleFrom(
                                 backgroundColor: AppColors.admin),
                           ),
@@ -13354,44 +13499,73 @@ class _AdminSqliteEngineTabState extends State<_AdminSqliteEngineTab> {
                 ),
               ),
               const SizedBox(height: 12),
-              _InfoRow('وضع Journal Mode',
-                  db.isWalActive ? 'WAL (Write-Ahead Logging)' : 'DELETE'),
-              _InfoRow('حجم قاعدة البيانات الفعلي', formatBytes(dbBytes)),
-              _InfoRow(
-                  'عمليات الكتابة المسجلة', '${db.writeTransactionsCount} عملية'),
-              _InfoRow('حالة فحص السلامة (Integrity)', db.lastIntegrityStatus),
-              _InfoRow('مسار التخزين',
-                  db.dbFilePath.isEmpty ? 'Internal Mirror' : db.dbFilePath),
+              _InfoRow('المحرك النشط', 'JOO CLOUD v3.0 Enterprise (Zero SQLite)'),
+              _InfoRow('حجم الكاش المحلي السريع', formatBytes(cacheBytes)),
+              _InfoRow('عمليات الكتابة المسجلة',
+                  '${db.writeTransactionsCount} عملية'),
               const Divider(color: AppColors.border),
-              _InfoRow('حالة المزامنة اللحظية', s.sqliteSyncStatusText),
-              _InfoRow('جدول الحسابات (users)', '${s.users.length} حساب'),
-              _InfoRow('جدول نشاط المستخدمين (user_activity_logs)',
+              _InfoRow('حالة المزامنة اللحظية', s.cloudSyncStatusText),
+              _InfoRow('مجموعة الحسابات (dovid_users)',
+                  '${s.users.length} حساب'),
+              _InfoRow('مجموعة النشاط (dovid_activity_logs)',
                   '${s.userActivityLogs.length} نشاط'),
-              _InfoRow('جدول التنزيلات (downloads)', '${s.downloads.length} سجل'),
-              _InfoRow('جدول bypass_logs (بالخلفية)',
-                  '${s.bypassLogs.length} سجل'),
+              _InfoRow('مجموعة التنزيلات (dovid_downloads)',
+                  '${s.downloads.length} سجل'),
               _InfoRow(
-                  'جدول security_events', '${s.securityEvents.length} سجل'),
-              _InfoRow('جدول ad_events', '${s.adEvents.length} سجل'),
+                  'مجموعة bypass_logs', '${s.bypassLogs.length} سجل'),
+              _InfoRow('مجموعة security_events',
+                  '${s.securityEvents.length} سجل'),
+              _InfoRow('مجموعة ad_events', '${s.adEvents.length} سجل'),
+              if (JooCloudDatabaseClient.cloudCollections.isNotEmpty) ...[
+                const Divider(color: AppColors.border),
+                const Text(
+                  'المجموعات النشطة على سيرفر JOO CLOUD:',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 11.5,
+                      color: AppColors.success),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: JooCloudDatabaseClient.cloudCollections
+                      .map((c) => Chip(
+                            label: Text(
+                              '${c['name'] ?? c['collection'] ?? 'col'} (${c['count'] ?? 0})',
+                              style: const TextStyle(fontSize: 10.5),
+                            ),
+                          ))
+                      .toList(),
+                ),
+              ],
               const SizedBox(height: 12),
               Row(
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: () async {
-                        await db.runVacuumAndIntegrityCheck();
-                        await _refreshSize();
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                                'تم ضغط قاعدة بيانات SQLite (VACUUM) وفحص سلامتها بنجاح'),
-                            backgroundColor: AppColors.success,
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.bolt, size: 16),
-                      label: const Text('تحسين وضغط SQLite (VACUUM)'),
+                      onPressed: loadingCollections
+                          ? null
+                          : () async {
+                              setState(() => loadingCollections = true);
+                              final cols = await JooCloudDatabaseClient
+                                  .listCollections();
+                              await _refreshSize();
+                              if (!mounted) return;
+                              setState(() => loadingCollections = false);
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                      'تم جلب ${cols.length} مجموعة من JOO CLOUD'),
+                                  backgroundColor: AppColors.guest,
+                                ),
+                              );
+                            },
+                      icon: const Icon(Icons.folder_copy_rounded, size: 16),
+                      label: Text(loadingCollections
+                          ? 'جاري الجلب...'
+                          : 'جلب المجموعات من السيرفر'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.guest,
                         foregroundColor: Colors.white,
@@ -13406,7 +13580,7 @@ class _AdminSqliteEngineTabState extends State<_AdminSqliteEngineTab> {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text(
-                              'تم نسخ النسخة الاحتياطية الكاملة لقاعدة البيانات'),
+                              'تم نسخ النسخة الاحتياطية الكاملة (JSON) للحافظة'),
                           backgroundColor: AppColors.success,
                         ),
                       );
@@ -13416,43 +13590,44 @@ class _AdminSqliteEngineTabState extends State<_AdminSqliteEngineTab> {
                   ),
                 ],
               ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: s.isSyncingSqlite
-                    ? null
-                    : () async {
-                        await s.syncAccountsAndActivityWithSqlite();
-                        await _refreshSize();
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(s.sqliteSyncStatusText),
-                            backgroundColor: AppColors.success,
-                          ),
-                        );
-                      },
-                icon: const Icon(Icons.sync_rounded,
-                    size: 17, color: Colors.white),
-                label: Text(
-                  s.isSyncingSqlite
-                      ? 'جاري مزامنة الحسابات والنشاط...'
-                      : 'مزامنة الحسابات ونشاط المستخدمين عبر SQLite الآن',
-                  style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w800),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.admin,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: s.isSyncingCloud
+                      ? null
+                      : () async {
+                          await s.syncAllWithJooCloud();
+                          await _refreshSize();
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(s.cloudSyncStatusText),
+                              backgroundColor: AppColors.success,
+                            ),
+                          );
+                        },
+                  icon: const Icon(Icons.cloud_upload_rounded,
+                      size: 17, color: Colors.white),
+                  label: Text(
+                    s.isSyncingCloud
+                        ? 'جاري المزامنة السحابية...'
+                        : 'مزامنة شاملة مع JOO CLOUD الآن',
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w800),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.admin,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
                 ),
               ),
-            ),
-          ]),
+            ],
+          ),
         ),
         const SizedBox(height: 14),
         const Text(
-          'سجل نشاط الحسابات المباشر المخزن في SQLite (أحدث العمليات):',
+          'سجل نشاط الحسابات المباشر المتزامن مع JOO CLOUD:',
           style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
         ),
         const SizedBox(height: 8),
@@ -14195,7 +14370,7 @@ class _AdminCodesAndApiTabState extends State<_AdminCodesAndApiTab> {
                   },
                   icon: const Icon(Icons.auto_awesome,
                       size: 16, color: Colors.black),
-                  label: const Text('توليد الأكواد في SQLite',
+                  label: const Text('توليد الأكواد ومزامنتها في JOO CLOUD',
                       style: TextStyle(
                           color: Colors.black, fontWeight: FontWeight.w800)),
                   style: ElevatedButton.styleFrom(

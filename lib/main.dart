@@ -1266,22 +1266,50 @@ class AppState extends ChangeNotifier {
   int? pendingTabSwitch;
   String pendingBatchUrls = '';
 
-  // Smart Download & Quota Settings
+  // Smart Download, Custom Path & Quota Settings
+  String customDownloadDirectory = '/storage/emulated/0/Download/DOViD';
+  bool autoRouteAudioToMusicDir = true;
+  bool placeAdsHomeTop = true;
+  bool placeAdsHomeBottom = true;
+  bool placeAdsStudio = true;
+  List<String> blockedDomains = [];
   String defaultQuality = 'auto';
   bool autoSaveAfterExtract = false;
   bool autoDetectClipboard = true;
   bool maintenanceMode = false;
+  bool emergencyLockdownMode = false;
+  bool strictSslVerification = false;
+  bool autoBanOnVpnAttempt = false;
   bool allowGuestAccess = true;
   int freeDailyQuota = 25;
   int maxConcurrentDownloads = 3;
+  int maxRequestsPerMinute = 20;
 
-  // Real Google Ads Configuration (AdMob + AdSense)
+  // Per-Platform Admin Gatekeeper
+  Map<String, bool> allowedPlatforms = {
+    'youtube': true,
+    'tiktok': true,
+    'instagram': true,
+    'facebook': true,
+    'twitter': true,
+    'snapchat': true,
+    'pinterest': true,
+    'vimeo': true,
+    'dailymotion': true,
+    'reddit': true,
+  };
+
+  // Real Google Ads Configuration (AdMob + AdSense + Pro Analytics)
   bool adsEnabled = false;
   bool bannerAdsEnabled = true;
   bool interstitialAdsEnabled = false;
   bool rewardedAdsEnabled = false;
+  bool nativeAdsEnabled = false;
+  bool appOpenAdsEnabled = false;
   bool vipNoAds = true;
   int interstitialFrequency = 3;
+  double estimatedEcpmUsd = 3.20;
+  String customSponsorTitle = '';
   int _extractionsSinceLastAd = 0;
 
   String admobAppId = '';
@@ -1298,8 +1326,11 @@ class AppState extends ChangeNotifier {
 
   // Background Extraction Engines Map (Hyper-Cluster Multi-Server Matrix)
   Map<String, bool> engineStates = {
+    'youtube_piped_invidious_cluster': true,
     'tikwm_ultra_hd': true,
+    'meta_reels_watch_engine': true,
     'vxtwitter_fx_cluster': true,
+    'snapchat_spotlight_engine': true,
     'reddit_dash_engine': true,
     'vimeo_config_engine': true,
     'dailymotion_meta_engine': true,
@@ -1504,10 +1535,47 @@ class AppState extends ChangeNotifier {
     highGraphicsEnabled = db.getConfig('high_graphics_enabled') != false;
     studioSortBy = (db.getConfig('studio_sort_by') ?? 'newest').toString();
 
+    customDownloadDirectory = (db.getConfig('custom_download_dir') ??
+            '/storage/emulated/0/Download/DOViD')
+        .toString();
+    autoRouteAudioToMusicDir =
+        db.getConfig('auto_route_audio_music') != false;
+    placeAdsHomeTop = db.getConfig('place_ads_home_top') != false;
+    placeAdsHomeBottom = db.getConfig('place_ads_home_bottom') != false;
+    placeAdsStudio = db.getConfig('place_ads_studio') != false;
+    final savedBlockedDomains = db.getConfig('blocked_domains');
+    if (savedBlockedDomains is List) {
+      blockedDomains = savedBlockedDomains.map((e) => e.toString()).toList();
+    }
     defaultQuality = (db.getConfig('default_quality') ??
             _prefs?.getString('default_quality') ??
             'auto')
         .toString();
+    emergencyLockdownMode = db.getConfig('emergency_lockdown_mode') == true;
+    strictSslVerification = db.getConfig('strict_ssl_verification') == true;
+    autoBanOnVpnAttempt = db.getConfig('auto_ban_on_vpn') == true;
+    maxConcurrentDownloads = int.tryParse(
+            (db.getConfig('max_concurrent_downloads') ?? '3').toString()) ??
+        3;
+    maxRequestsPerMinute = int.tryParse(
+            (db.getConfig('max_requests_per_minute') ?? '20').toString()) ??
+        20;
+    nativeAdsEnabled = db.getConfig('native_ads_enabled') == true;
+    appOpenAdsEnabled = db.getConfig('app_open_ads_enabled') == true;
+    estimatedEcpmUsd = double.tryParse(
+            (db.getConfig('estimated_ecpm_usd') ?? '3.20').toString()) ??
+        3.20;
+    customSponsorTitle =
+        (db.getConfig('custom_sponsor_title') ?? '').toString();
+
+    final savedAllowedPlatforms = db.getConfig('allowed_platforms');
+    if (savedAllowedPlatforms is Map) {
+      savedAllowedPlatforms.forEach((k, v) {
+        if (allowedPlatforms.containsKey(k.toString())) {
+          allowedPlatforms[k.toString()] = v != false;
+        }
+      });
+    }
     autoSaveAfterExtract = db.getConfig('auto_save_extract') == true;
     autoDetectClipboard = db.getConfig('auto_detect_clipboard') != false;
     maintenanceMode = db.getConfig('maintenance_mode') == true;
@@ -1585,6 +1653,20 @@ class AppState extends ChangeNotifier {
     bool? newEnable3DEffects,
     bool? newHighGraphics,
     String? newStudioSortBy,
+    String? newDownloadDir,
+    bool? newAutoRouteAudio,
+    bool? newPlaceAdsHomeTop,
+    bool? newPlaceAdsHomeBottom,
+    bool? newPlaceAdsStudio,
+    bool? newEmergencyLockdown,
+    bool? newStrictSsl,
+    bool? newAutoBanOnVpn,
+    int? newMaxConcurrent,
+    int? newMaxReqPerMin,
+    bool? newNativeAdsEnabled,
+    bool? newAppOpenAdsEnabled,
+    double? newEstimatedEcpm,
+    String? newSponsorTitle,
     String? newQuality,
     bool? newAutoSave,
     bool? newAutoDetectClipboard,
@@ -1636,6 +1718,62 @@ class AppState extends ChangeNotifier {
     if (newStudioSortBy != null) {
       studioSortBy = newStudioSortBy;
       db.setConfig('studio_sort_by', newStudioSortBy);
+    }
+    if (newDownloadDir != null && newDownloadDir.trim().isNotEmpty) {
+      customDownloadDirectory = newDownloadDir.trim();
+      db.setConfig('custom_download_dir', customDownloadDirectory);
+    }
+    if (newAutoRouteAudio != null) {
+      autoRouteAudioToMusicDir = newAutoRouteAudio;
+      db.setConfig('auto_route_audio_music', newAutoRouteAudio);
+    }
+    if (newPlaceAdsHomeTop != null) {
+      placeAdsHomeTop = newPlaceAdsHomeTop;
+      db.setConfig('place_ads_home_top', newPlaceAdsHomeTop);
+    }
+    if (newPlaceAdsHomeBottom != null) {
+      placeAdsHomeBottom = newPlaceAdsHomeBottom;
+      db.setConfig('place_ads_home_bottom', newPlaceAdsHomeBottom);
+    }
+    if (newPlaceAdsStudio != null) {
+      placeAdsStudio = newPlaceAdsStudio;
+      db.setConfig('place_ads_studio', newPlaceAdsStudio);
+    }
+    if (newEmergencyLockdown != null) {
+      emergencyLockdownMode = newEmergencyLockdown;
+      db.setConfig('emergency_lockdown_mode', newEmergencyLockdown);
+    }
+    if (newStrictSsl != null) {
+      strictSslVerification = newStrictSsl;
+      db.setConfig('strict_ssl_verification', newStrictSsl);
+    }
+    if (newAutoBanOnVpn != null) {
+      autoBanOnVpnAttempt = newAutoBanOnVpn;
+      db.setConfig('auto_ban_on_vpn', newAutoBanOnVpn);
+    }
+    if (newMaxConcurrent != null) {
+      maxConcurrentDownloads = newMaxConcurrent.clamp(1, 8);
+      db.setConfig('max_concurrent_downloads', maxConcurrentDownloads);
+    }
+    if (newMaxReqPerMin != null) {
+      maxRequestsPerMinute = newMaxReqPerMin.clamp(5, 120);
+      db.setConfig('max_requests_per_minute', maxRequestsPerMinute);
+    }
+    if (newNativeAdsEnabled != null) {
+      nativeAdsEnabled = newNativeAdsEnabled;
+      db.setConfig('native_ads_enabled', newNativeAdsEnabled);
+    }
+    if (newAppOpenAdsEnabled != null) {
+      appOpenAdsEnabled = newAppOpenAdsEnabled;
+      db.setConfig('app_open_ads_enabled', newAppOpenAdsEnabled);
+    }
+    if (newEstimatedEcpm != null) {
+      estimatedEcpmUsd = newEstimatedEcpm;
+      db.setConfig('estimated_ecpm_usd', newEstimatedEcpm);
+    }
+    if (newSponsorTitle != null) {
+      customSponsorTitle = newSponsorTitle.trim();
+      db.setConfig('custom_sponsor_title', customSponsorTitle);
     }
     if (newQuality != null) {
       defaultQuality = newQuality;
@@ -1757,6 +1895,75 @@ class AppState extends ChangeNotifier {
     engineStates[key] = enabled;
     db.setConfig('engine_states', engineStates);
     notifyListeners();
+  }
+
+  void togglePlatformAllowed(String platformId, bool allowed) {
+    allowedPlatforms[platformId] = allowed;
+    db.setConfig('allowed_platforms', allowedPlatforms);
+    notifyListeners();
+  }
+
+  void enableAllExtractionEngines(bool enabled) {
+    for (final k in engineStates.keys.toList()) {
+      engineStates[k] = enabled;
+    }
+    db.setConfig('engine_states', engineStates);
+    notifyListeners();
+  }
+
+  void resetAllUsersDailyQuotas() {
+    for (final u in users) {
+      u.dailyDownloadsCount = 0;
+    }
+    _saveUsers();
+    notifyListeners();
+  }
+
+  void grantVipToAllUsers() {
+    for (final u in users) {
+      u.isVip = true;
+    }
+    _saveUsers();
+    notifyListeners();
+  }
+
+  void clearAdAnalytics() {
+    adEvents.clear();
+    _saveAdEvents();
+    notifyListeners();
+  }
+
+  void unblockAllIps() {
+    blockedIps.clear();
+    _saveBlockedIps();
+    notifyListeners();
+  }
+
+  void addBlockedDomain(String domain) {
+    final clean = domain.trim().toLowerCase();
+    if (clean.isNotEmpty && !blockedDomains.contains(clean)) {
+      blockedDomains.add(clean);
+      db.setConfig('blocked_domains', blockedDomains);
+      notifyListeners();
+    }
+  }
+
+  void removeBlockedDomain(String domain) {
+    blockedDomains.remove(domain);
+    db.setConfig('blocked_domains', blockedDomains);
+    notifyListeners();
+  }
+
+  double get estimatedTotalAdRevenueUsd {
+    final impressionsRevenue = (totalAdImpressions / 1000.0) * estimatedEcpmUsd;
+    final clicksRevenue = totalAdClicks * 0.08;
+    final rewardsRevenue = totalAdRewards * 0.04;
+    return impressionsRevenue + clicksRevenue + rewardsRevenue;
+  }
+
+  double get adCtrPercent {
+    if (totalAdImpressions == 0) return 0.0;
+    return (totalAdClicks / totalAdImpressions) * 100.0;
   }
 
   void addCustomFolder(String folder) {
@@ -3885,13 +4092,46 @@ class DownloadService {
     final strategyPipeline =
         <MapEntry<String, Future<Map<String, dynamic>?> Function(String)>>[];
 
-    // Wave 1: Platform-native ultra-fast specialized extractors
-    if (platform == 'tiktok') {
+    // Check if platform or domain is disabled by Admin
+    final s = AppState();
+    if (s.emergencyLockdownMode && s.currentUser?.isAdmin != true) {
+      return {
+        'status': 'error',
+        'message': 'النظام في وضع الإغلاق الأمني الطارئ بأمر من إدارة النظام.',
+      };
+    }
+    for (final blockedDom in s.blockedDomains) {
+      if (blockedDom.isNotEmpty && url.toLowerCase().contains(blockedDom)) {
+        return {
+          'status': 'error',
+          'message': 'هذا النطاق محظور أمنياً بواسطة إدارة النظام.',
+        };
+      }
+    }
+    if (s.allowedPlatforms[platform] == false &&
+        s.currentUser?.isAdmin != true) {
+      return {
+        'status': 'error',
+        'message': 'التحميل من منصة ${platform.toUpperCase()} متوقف مؤقتاً من قِبل الإدارة.',
+      };
+    }
+
+    // Wave 1: Platform-native ultra-fast specialized extractors for all 10 platforms
+    if (platform == 'youtube') {
+      strategyPipeline.add(MapEntry('youtube_piped_invidious_cluster',
+          (u) => _youtubePipedInvidiousCluster(u, quality)));
+    } else if (platform == 'tiktok') {
       strategyPipeline.add(
           MapEntry('tikwm_ultra_hd', (u) => _tikwmClusterEngine(u, quality)));
+    } else if (platform == 'instagram' || platform == 'facebook') {
+      strategyPipeline.add(MapEntry(
+          'meta_reels_watch_engine', (u) => _metaReelsAndWatchEngine(u, quality)));
     } else if (platform == 'twitter') {
       strategyPipeline.add(MapEntry(
           'vxtwitter_fx_cluster', (u) => _twitterVxFxClusterEngine(u, quality)));
+    } else if (platform == 'snapchat') {
+      strategyPipeline.add(MapEntry('snapchat_spotlight_engine',
+          (u) => _snapchatSpotlightEngine(u, quality)));
     } else if (platform == 'reddit') {
       strategyPipeline.add(
           MapEntry('reddit_dash_engine', (u) => _redditDirectEngine(u, quality)));
@@ -4692,11 +4932,283 @@ class DownloadService {
     return null;
   }
 
-  static Future<Directory> _resolveWritableDirectory() async {
+  // --- Strategy 14: YouTube Distributed Piped & Invidious Cluster ---
+  static Future<Map<String, dynamic>?> _youtubePipedInvidiousCluster(
+      String url, String quality) async {
+    final ytId = extractYoutubeId(url);
+    if (ytId == null) return null;
+
+    final pipedNodes = [
+      'https://pipedapi.kavin.rocks',
+      'https://pipedapi.tokhmi.xyz',
+      'https://pipedapi.syncpundit.io',
+    ];
+
+    for (int i = 0; i < pipedNodes.length; i++) {
+      try {
+        final apiUrl = '${pipedNodes[i]}/streams/$ytId';
+        final res = await http.get(
+          Uri.parse(apiUrl),
+          headers: {'User-Agent': _pickUserAgent(i), 'Accept': 'application/json'},
+        ).timeout(const Duration(seconds: 10));
+        if (res.statusCode == 200) {
+          final j = jsonDecode(res.body);
+          if (j is Map) {
+            String videoLink = '';
+            String hdLink = '';
+            String audioLink = '';
+            final vStreams = j['videoStreams'];
+            if (vStreams is List) {
+              for (final s in vStreams) {
+                if (s is Map && s['videoOnly'] != true) {
+                  final u = (s['url'] ?? '').toString();
+                  final q = (s['quality'] ?? '').toString().toLowerCase();
+                  if (u.startsWith('http')) {
+                    if (videoLink.isEmpty) videoLink = u;
+                    if (q.contains('1080') || q.contains('720')) hdLink = u;
+                  }
+                }
+              }
+            }
+            final aStreams = j['audioStreams'];
+            if (aStreams is List && aStreams.isNotEmpty) {
+              for (final a in aStreams) {
+                if (a is Map) {
+                  final u = (a['url'] ?? '').toString();
+                  if (u.startsWith('http')) {
+                    audioLink = u;
+                    break;
+                  }
+                }
+              }
+            }
+            final chosen = (quality == 'audio' && audioLink.isNotEmpty)
+                ? audioLink
+                : (hdLink.isNotEmpty ? hdLink : videoLink);
+            if (chosen.isNotEmpty) {
+              final durSec = int.tryParse((j['duration'] ?? '0').toString()) ?? 0;
+              return {
+                'status': 'success',
+                'answer': chosen,
+                'hdLink': hdLink.isNotEmpty ? hdLink : chosen,
+                'audioLink': audioLink,
+                'title': (j['title'] ?? 'فيديو YouTube').toString(),
+                'author': (j['uploader'] ?? '').toString(),
+                'thumbnail': (j['thumbnailUrl'] ??
+                        'https://img.youtube.com/vi/$ytId/hqdefault.jpg')
+                    .toString(),
+                'duration': formatDurationSeconds(durSec),
+                'fileSize': '',
+              };
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Fallback to Invidious API cluster
+    final invidiousNodes = [
+      'https://inv.tux.pizza',
+      'https://invidious.nerdvpn.de',
+    ];
+    for (int i = 0; i < invidiousNodes.length; i++) {
+      try {
+        final apiUrl = '${invidiousNodes[i]}/api/v1/videos/$ytId';
+        final res = await http.get(
+          Uri.parse(apiUrl),
+          headers: {'User-Agent': _pickUserAgent(i), 'Accept': 'application/json'},
+        ).timeout(const Duration(seconds: 10));
+        if (res.statusCode == 200) {
+          final j = jsonDecode(res.body);
+          if (j is Map) {
+            String videoLink = '';
+            String hdLink = '';
+            String audioLink = '';
+            final fmtStreams = j['formatStreams'];
+            if (fmtStreams is List) {
+              for (final f in fmtStreams) {
+                if (f is Map) {
+                  final u = (f['url'] ?? '').toString();
+                  final q = (f['qualityLabel'] ?? '').toString();
+                  if (u.startsWith('http')) {
+                    if (videoLink.isEmpty) videoLink = u;
+                    if (q.contains('720') || q.contains('1080')) hdLink = u;
+                  }
+                }
+              }
+            }
+            final adaptive = j['adaptiveFormats'];
+            if (adaptive is List) {
+              for (final a in adaptive) {
+                if (a is Map &&
+                    (a['type'] ?? '').toString().contains('audio') &&
+                    audioLink.isEmpty) {
+                  final u = (a['url'] ?? '').toString();
+                  if (u.startsWith('http')) audioLink = u;
+                }
+              }
+            }
+            final chosen = (quality == 'audio' && audioLink.isNotEmpty)
+                ? audioLink
+                : (hdLink.isNotEmpty ? hdLink : videoLink);
+            if (chosen.isNotEmpty) {
+              return {
+                'status': 'success',
+                'answer': chosen,
+                'hdLink': hdLink.isNotEmpty ? hdLink : chosen,
+                'audioLink': audioLink,
+                'title': (j['title'] ?? 'فيديو YouTube').toString(),
+                'author': (j['author'] ?? '').toString(),
+                'thumbnail': 'https://img.youtube.com/vi/$ytId/hqdefault.jpg',
+                'duration': j['lengthSeconds'] != null
+                    ? formatDurationSeconds(
+                        int.tryParse(j['lengthSeconds'].toString()) ?? 0)
+                    : '',
+                'fileSize': '',
+              };
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  // --- Strategy 15: Meta (Instagram Reels/Posts & Facebook Watch/Reels) Engine ---
+  static Future<Map<String, dynamic>?> _metaReelsAndWatchEngine(
+      String url, String quality) async {
+    final candidateUrls = <String>[url];
+    // For Instagram, also probe the /embed/captioned/ endpoint which exposes direct video_url
+    final igMatch = RegExp(
+            r"""instagram\.com\/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)""",
+            caseSensitive: false)
+        .firstMatch(url);
+    if (igMatch != null) {
+      final shortcode = igMatch.group(1)!;
+      candidateUrls.insert(
+          0, 'https://www.instagram.com/p/$shortcode/embed/captioned/');
+    }
+
+    for (final target in candidateUrls) {
+      try {
+        final res = await http.get(
+          Uri.parse(target),
+          headers: {
+            'User-Agent': _pickUserAgent(2),
+            'Accept':
+                'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+          },
+        ).timeout(const Duration(seconds: 12));
+        if (res.statusCode != 200) continue;
+
+        final decodedHtml = res.body
+            .replaceAll(r'\/', '/')
+            .replaceAll(r'&', '&')
+            .replaceAll(r'%3D', '%3D')
+            .replaceAll('&amp;', '&');
+
+        final streamPatterns = [
+          RegExp(r'"video_url"\s*:\s*"(https?:\/\/[^"]+)"'),
+          RegExp(r'"playable_url_quality_hd"\s*:\s*"(https?:\/\/[^"]+)"'),
+          RegExp(r'"browser_native_hd_url"\s*:\s*"(https?:\/\/[^"]+)"'),
+          RegExp(r'"hd_src_no_ratelimit"\s*:\s*"(https?:\/\/[^"]+)"'),
+          RegExp(r'"hd_src"\s*:\s*"(https?:\/\/[^"]+)"'),
+          RegExp(r'"playable_url"\s*:\s*"(https?:\/\/[^"]+)"'),
+          RegExp(r'"browser_native_sd_url"\s*:\s*"(https?:\/\/[^"]+)"'),
+          RegExp(r'"sd_src"\s*:\s*"(https?:\/\/[^"]+)"'),
+        ];
+
+        for (final pat in streamPatterns) {
+          final m = pat.firstMatch(decodedHtml);
+          if (m != null) {
+            final streamUrl = m.group(1)!;
+            if (streamUrl.startsWith('http')) {
+              return {
+                'status': 'success',
+                'answer': streamUrl,
+                'hdLink': streamUrl,
+                'audioLink': '',
+                'title': igMatch != null ? 'فيديو Instagram Reels HD' : 'فيديو Facebook HD',
+              };
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  // --- Strategy 16: Snapchat Spotlight & Public Story JSON-Next Extractor ---
+  static Future<Map<String, dynamic>?> _snapchatSpotlightEngine(
+      String url, String quality) async {
+    if (!url.toLowerCase().contains('snapchat.com')) return null;
+    try {
+      final res = await http.get(
+        Uri.parse(url),
+        headers: {
+          'User-Agent': _pickUserAgent(0),
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+      ).timeout(const Duration(seconds: 12));
+      if (res.statusCode == 200) {
+        final html = res.body
+            .replaceAll(r'\/', '/')
+            .replaceAll(r'&', '&')
+            .replaceAll('&amp;', '&');
+        final snapPatterns = [
+          RegExp(r'"contentUrl"\s*:\s*"(https:\/\/cf-st\.sc-cdn\.net\/[^"]+)"'),
+          RegExp(r'(https:\/\/cf-st\.sc-cdn\.net\/d\/[A-Za-z0-9._\-]+)'),
+          RegExp(r'"videoUrl"\s*:\s*"(https?:\/\/[^"]+\.mp4[^"]*)"'),
+        ];
+        for (final pat in snapPatterns) {
+          final m = pat.firstMatch(html);
+          if (m != null) {
+            final vUrl = m.group(1)!;
+            if (vUrl.startsWith('http')) {
+              return {
+                'status': 'success',
+                'answer': vUrl,
+                'hdLink': vUrl,
+                'audioLink': '',
+                'title': 'فيديو Snapchat Spotlight HD',
+                'author': 'Snapchat Creator',
+              };
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static Future<bool> verifyDirectoryWritable(String dirPath) async {
+    try {
+      final dir = Directory(dirPath.trim());
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      final probe = File(
+          '${dir.path}/.dovid_verify_${DateTime.now().microsecondsSinceEpoch}');
+      await probe.writeAsString('ok');
+      await probe.delete();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<Directory> _resolveWritableDirectory({bool isAudio = false}) async {
+    final s = AppState();
+    final customDir = s.customDownloadDirectory.trim();
+    final audioDir = '/storage/emulated/0/Music/DOViD';
     final candidates = [
+      if (isAudio && s.autoRouteAudioToMusicDir) audioDir,
+      if (customDir.isNotEmpty) customDir,
       '/storage/emulated/0/Download/DOViD',
       '/storage/emulated/0/Download',
       '/storage/emulated/0/Movies/DOViD',
+      '/storage/emulated/0/Music/DOViD',
       '/storage/emulated/0/DCIM/DOViD',
       '/sdcard/Download',
     ];
@@ -4757,13 +5269,19 @@ class DownloadService {
     HttpClient? client;
     IOSink? sink;
 
-    for (int attempt = 0; attempt < 2; attempt++) {
+    final proxyStreamUrl =
+        '$kApiEndpoint?action=proxy_download&url=${Uri.encodeComponent(targetUrl)}&platform=${Uri.encodeComponent(entry.platform)}&format=${isAudio ? "mp3" : "mp4"}';
+    final candidateUrls = [targetUrl, targetUrl, proxyStreamUrl];
+
+    for (int attempt = 0; attempt < candidateUrls.length; attempt++) {
       try {
         client = HttpClient();
         client.connectionTimeout = const Duration(seconds: 25);
-        client.badCertificateCallback = (_, __, ___) => true;
+        if (!AppState().strictSslVerification) {
+          client.badCertificateCallback = (_, __, ___) => true;
+        }
 
-        final req = await client.getUrl(Uri.parse(targetUrl));
+        final req = await client.getUrl(Uri.parse(candidateUrls[attempt]));
         req.followRedirects = true;
         req.maxRedirects = 8;
         req.headers.set('User-Agent', _pickUserAgent(attempt));
@@ -4776,7 +5294,7 @@ class DownloadService {
         final res = await req.close();
         if (res.statusCode != 200 && res.statusCode != 206) {
           client.close();
-          if (attempt == 0) continue;
+          if (attempt < candidateUrls.length - 1) continue;
           task.status = 'failed';
           AppState().removeActiveTask(entry.id);
           return null;
@@ -4793,7 +5311,7 @@ class DownloadService {
             : '${cleanName.length > 42 ? cleanName.substring(0, 42) : cleanName}_$stamp';
         final ext = isAudio ? 'mp3' : 'mp4';
 
-        final targetDir = await _resolveWritableDirectory();
+        final targetDir = await _resolveWritableDirectory(isAudio: isAudio);
         final filePath = '${targetDir.path}/$safeBase.$ext';
         final file = File(filePath);
         sink = file.openWrite();
@@ -5350,6 +5868,15 @@ class _RealGoogleBannerAdWidgetState extends State<RealGoogleBannerAdWidget> {
   Widget build(BuildContext context) {
     final s = AppState();
     if (!s.adsEnabled || !s.bannerAdsEnabled) return const SizedBox.shrink();
+    if (widget.placement == 'home_top' && !s.placeAdsHomeTop) {
+      return const SizedBox.shrink();
+    }
+    if (widget.placement == 'home_bottom' && !s.placeAdsHomeBottom) {
+      return const SizedBox.shrink();
+    }
+    if (widget.placement == 'studio_top' && !s.placeAdsStudio) {
+      return const SizedBox.shrink();
+    }
     if (s.currentUser?.isVip == true && s.vipNoAds) {
       return const SizedBox.shrink();
     }
@@ -7493,6 +8020,15 @@ class _RichResultPreviewCard extends StatelessWidget {
                       ),
                     ),
                     IconButton(
+                      onPressed: () => showShareDownloadModal(context, entry),
+                      icon: Icon(
+                        Icons.share_rounded,
+                        color: s.accentColor,
+                        size: 20,
+                      ),
+                      tooltip: 'مشاركة التنزيل',
+                    ),
+                    IconButton(
                       onPressed: () => s.toggleVault(entry),
                       icon: Icon(
                         entry.isVaulted
@@ -7643,6 +8179,202 @@ class _FallbackThumbBanner extends StatelessWidget {
       ),
     );
   }
+}
+
+void showShareDownloadModal(BuildContext context, DownloadEntry entry) {
+  final s = AppState();
+  final accent = s.accentColor;
+  final shareUrl =
+      entry.downloadLink.isNotEmpty ? entry.downloadLink : entry.url;
+  final shareTitle =
+      entry.title.isEmpty ? 'فيديو ${entry.platform.toUpperCase()}' : entry.title;
+  final fullShareText =
+      '🎬 $shareTitle\n🌐 المنصة: ${entry.platform.toUpperCase()} (${entry.quality.toUpperCase()})\n🔗 رابط الفيديو المباشر:\n$shareUrl\n${entry.localPath.isNotEmpty ? "📂 محفوظ بالهاتف: ${entry.localPath}\n" : ""}⚡ عبر تطبيق $kAppName';
+
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: AppColors.surface,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    builder: (ctx) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Platform3DBadge(
+                  platformId: entry.platform,
+                  active: true,
+                  size: 46,
+                  showLabel: false,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'مشاركة التنزيل والفيديو',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w900, fontSize: 15.5),
+                      ),
+                      Text(
+                        shareTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 11.5, color: AppColors.textMuted),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  icon: const Icon(Icons.close, size: 20),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      final uri = Uri.parse(
+                          'https://wa.me/?text=${Uri.encodeComponent(fullShareText)}');
+                      await launchUrl(uri,
+                          mode: LaunchMode.externalApplication);
+                    },
+                    icon: const Icon(Icons.chat_rounded,
+                        color: Colors.white, size: 17),
+                    label: const Text('واتساب',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF25D366),
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      final uri = Uri.parse(
+                          'https://t.me/share/url?url=${Uri.encodeComponent(shareUrl)}&text=${Uri.encodeComponent(shareTitle)}');
+                      await launchUrl(uri,
+                          mode: LaunchMode.externalApplication);
+                    },
+                    icon: const Icon(Icons.send_rounded,
+                        color: Colors.white, size: 16),
+                    label: const Text('تيليجرام',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0088CC),
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      final uri = Uri.parse(
+                          'https://twitter.com/intent/tweet?text=${Uri.encodeComponent(shareTitle)}&url=${Uri.encodeComponent(shareUrl)}');
+                      await launchUrl(uri,
+                          mode: LaunchMode.externalApplication);
+                    },
+                    icon: const Icon(Icons.alternate_email,
+                        color: Colors.white, size: 16),
+                    label: const Text('منصة X',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1DA1F2),
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: fullShareText));
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('تم نسخ بطاقة المشاركة الكاملة للحافظة'),
+                          backgroundColor: AppColors.success,
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.copy_all_rounded, size: 16),
+                    label: const Text('نسخ بطاقة المشاركة',
+                        style: TextStyle(fontSize: 11.5)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: shareUrl));
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('تم نسخ رابط الفيديو المباشر للحافظة'),
+                          backgroundColor: AppColors.success,
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.link, size: 16),
+                    label: const Text('نسخ الرابط المباشر',
+                        style: TextStyle(fontSize: 11.5)),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: accent.withOpacity(0.35)),
+                ),
+                child: SizedBox(
+                  width: 118,
+                  height: 118,
+                  child: CustomPaint(
+                    painter: VisualQrMatrixPainter(
+                      data: shareUrl,
+                      foregroundColor: accent,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
 }
 
 void _showVideoPreviewModal(
@@ -8333,6 +9065,15 @@ class _StudioItemTile extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+          IconButton(
+            onPressed: () => showShareDownloadModal(context, entry),
+            icon: Icon(
+              Icons.share_rounded,
+              size: 18,
+              color: s.accentColor,
+            ),
+            tooltip: 'مشاركة التنزيل',
           ),
           IconButton(
             onPressed: () => s.toggleFavorite(entry),
@@ -9154,7 +9895,28 @@ class _HistoryScreenState extends State<HistoryScreen> {
               const Text('سجل التحميلات',
                   style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
               const Spacer(),
-              if (rawList.isNotEmpty)
+              if (rawList.isNotEmpty) ...[
+                IconButton(
+                  onPressed: () {
+                    final summary = rawList
+                        .take(20)
+                        .map((d) =>
+                            '• ${d.title.isEmpty ? d.platform.toUpperCase() : d.title}\n  ${d.downloadLink.isNotEmpty ? d.downloadLink : d.url}')
+                        .join('\n\n');
+                    Clipboard.setData(ClipboardData(
+                        text: '📥 قائمة تنزيلات $kAppName:\n\n$summary'));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content:
+                            Text('تم نسخ قائمة التنزيلات كاملة للمشاركة'),
+                        backgroundColor: AppColors.success,
+                      ),
+                    );
+                  },
+                  icon: Icon(Icons.share_rounded,
+                      size: 18, color: s.accentColor),
+                  tooltip: 'مشاركة قائمة التنزيلات',
+                ),
                 TextButton.icon(
                   onPressed: () => s.clearMyHistory(),
                   icon: const Icon(Icons.delete_outline,
@@ -9162,6 +9924,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   label: const Text('مسح السجل',
                       style: TextStyle(color: AppColors.error, fontSize: 12)),
                 ),
+              ],
             ],
           ),
         ),
@@ -9266,6 +10029,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             ),
                           ),
                           IconButton(
+                            onPressed: () => showShareDownloadModal(context, e),
+                            icon: Icon(Icons.share_rounded,
+                                size: 17, color: s.accentColor),
+                            tooltip: 'مشاركة التنزيل',
+                          ),
+                          IconButton(
                             onPressed: () => s.deleteDownloadItem(e.id),
                             icon: const Icon(Icons.close,
                                 size: 16, color: AppColors.textDim),
@@ -9313,8 +10082,32 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final codeCtrl = TextEditingController();
   final pinCtrl = TextEditingController();
+  final downloadPathCtrl = TextEditingController();
   String? codeError;
   String? codeSuccess;
+
+  final List<Map<String, String>> presetDownloadDirs = const [
+    {
+      'label': 'مجلد التنزيلات الرئيسي (Download)',
+      'path': '/storage/emulated/0/Download/DOViD',
+    },
+    {
+      'label': 'مجلد الأفلام والفيديو (Movies)',
+      'path': '/storage/emulated/0/Movies/DOViD',
+    },
+    {
+      'label': 'مجلد الصوتيات والموسيقى (Music)',
+      'path': '/storage/emulated/0/Music/DOViD',
+    },
+    {
+      'label': 'مجلد الاستوديو والكاميرا (DCIM)',
+      'path': '/storage/emulated/0/DCIM/DOViD',
+    },
+    {
+      'label': 'مجلد المستندات (Documents)',
+      'path': '/storage/emulated/0/Documents/DOViD',
+    },
+  ];
 
   final themeSwatches = const [
     Color(0xFFF97316),
@@ -9328,13 +10121,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    pinCtrl.text = AppState().appPinCode;
+    final s = AppState();
+    pinCtrl.text = s.appPinCode;
+    downloadPathCtrl.text = s.customDownloadDirectory;
   }
 
   @override
   void dispose() {
     codeCtrl.dispose();
     pinCtrl.dispose();
+    downloadPathCtrl.dispose();
     super.dispose();
   }
 
@@ -9491,6 +10287,152 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   );
                 }).toList(),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.folder_open_rounded,
+                      color: s.accentColor, size: 19),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'تغيير وتخصيص مسار حفظ التنزيلات بالهاتف',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'المسار الفعال حالياً: ${s.customDownloadDirectory}',
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    color: AppColors.success),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: presetDownloadDirs.map((preset) {
+                  final pPath = preset['path']!;
+                  final active = s.customDownloadDirectory == pPath;
+                  return ChoiceChip(
+                    label: Text(
+                      preset['label']!,
+                      style: const TextStyle(fontSize: 10.5),
+                    ),
+                    selected: active,
+                    onSelected: (_) {
+                      setState(() => downloadPathCtrl.text = pPath);
+                      s.saveSettings(newDownloadDir: pPath);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('تم تغيير مسار التنزيل إلى: $pPath'),
+                          backgroundColor: AppColors.success,
+                        ),
+                      );
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: downloadPathCtrl,
+                      textDirection: TextDirection.ltr,
+                      style: const TextStyle(
+                          fontSize: 11.5, fontFamily: 'monospace'),
+                      decoration: const InputDecoration(
+                        hintText: '/storage/emulated/0/Download/DOViD',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      final entered = downloadPathCtrl.text.trim();
+                      if (entered.isEmpty) return;
+                      await s.saveSettings(newDownloadDir: entered);
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('تم حفظ مسار التنزيل المخصص: $entered'),
+                          backgroundColor: AppColors.success,
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.save_rounded, size: 16),
+                    label: const Text('حفظ المسار'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        final pathToTest = downloadPathCtrl.text.trim();
+                        final ok = await DownloadService.verifyDirectoryWritable(
+                            pathToTest);
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(ok
+                                ? 'المسار صالح وقابل للكتابة والحفظ فوراً ✓'
+                                : 'النظام يستخدم المسار الاحتياطي التلقائي عند الحاجة'),
+                            backgroundColor:
+                                ok ? AppColors.success : AppColors.warning,
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.verified_outlined, size: 15),
+                      label: const Text('فحص صلاحية المسار',
+                          style: TextStyle(fontSize: 11)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        const def = '/storage/emulated/0/Download/DOViD';
+                        setState(() => downloadPathCtrl.text = def);
+                        s.saveSettings(newDownloadDir: def);
+                      },
+                      icon: const Icon(Icons.restore_rounded, size: 15),
+                      label: const Text('المسار الافتراضي',
+                          style: TextStyle(fontSize: 11)),
+                    ),
+                  ),
+                ],
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: s.autoRouteAudioToMusicDir,
+                activeColor: s.accentColor,
+                title: const Text(
+                    'فرز تلقائي للصوتيات MP3 في مجلد الموسيقى (Music)',
+                    style:
+                        TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                onChanged: (v) => s.saveSettings(newAutoRouteAudio: v),
               ),
             ],
           ),
@@ -10014,6 +10956,20 @@ class _AdminCommandCenterTab extends StatelessWidget {
                 onChanged: (v) => s.saveSettings(newAllowGuestAccess: v),
               ),
               const SizedBox(height: 8),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: s.emergencyLockdownMode,
+                activeColor: AppColors.error,
+                title: const Text(
+                    'وضع الإغلاق الأمني الطارئ (Emergency Lockdown)',
+                    style:
+                        TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800)),
+                subtitle: const Text(
+                    'إيقاف جميع عمليات الاستخراج والتحميل مؤقتاً لحين انتهاء الفحص الأمني',
+                    style: TextStyle(fontSize: 10.5)),
+                onChanged: (v) => s.saveSettings(newEmergencyLockdown: v),
+              ),
+              const SizedBox(height: 8),
               Text(
                   'الحصة اليومية للمستخدم المجاني: ${s.freeDailyQuota} تحميل/يوم',
                   style: const TextStyle(
@@ -10026,6 +10982,98 @@ class _AdminCommandCenterTab extends StatelessWidget {
                 activeColor: AppColors.admin,
                 onChanged: (v) =>
                     s.saveSettings(newFreeDailyQuota: v.round()),
+              ),
+              Text(
+                  'أقصى عدد للتحميلات المتزامنة بالخلفية: ${s.maxConcurrentDownloads}',
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w700)),
+              Slider(
+                value: s.maxConcurrentDownloads.toDouble().clamp(1, 8),
+                min: 1,
+                max: 8,
+                divisions: 7,
+                activeColor: AppColors.success,
+                onChanged: (v) =>
+                    s.saveSettings(newMaxConcurrent: v.round()),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        s.resetAllUsersDailyQuotas();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                                'تم تصفير العداد اليومي لجميع المستخدمين بنجاح'),
+                            backgroundColor: AppColors.success,
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.restart_alt_rounded, size: 16),
+                      label: const Text('تصفير حصص اليوم',
+                          style: TextStyle(fontSize: 11)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        s.grantVipToAllUsers();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content:
+                                Text('تم منح صلاحية VIP لجميع الأعضاء المسجلين'),
+                            backgroundColor: AppColors.api,
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.workspace_premium,
+                          size: 16, color: Colors.black),
+                      label: const Text('منح VIP للجميع',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.black,
+                              fontWeight: FontWeight.w800)),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.api),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'بوابة التحكم الفردي في المنصات الـ 10 (تفعيل / إيقاف فوري)',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: kSupportedPlatforms3D.map((p) {
+                  final allowed = s.allowedPlatforms[p.id] != false;
+                  return FilterChip(
+                    label: Text(p.name, style: const TextStyle(fontSize: 11)),
+                    selected: allowed,
+                    selectedColor: p.accentGlow.withOpacity(0.24),
+                    checkmarkColor: Colors.white,
+                    onSelected: (v) => s.togglePlatformAllowed(p.id, v),
+                  );
+                }).toList(),
               ),
             ],
           ),
@@ -10173,6 +11221,53 @@ class _AdminGoogleAdsStudioTabState extends State<_AdminGoogleAdsStudioTab> {
                     style: TextStyle(fontSize: 12)),
                 onChanged: (v) => s.saveSettings(newRewardedAdsEnabled: v),
               ),
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _TimerBox(
+                      value:
+                          '\$${s.estimatedTotalAdRevenueUsd.toStringAsFixed(2)}',
+                      label: 'الأرباح التقديرية',
+                    ),
+                    _TimerBox(
+                      value: '${s.adCtrPercent.toStringAsFixed(1)}%',
+                      label: 'نسبة النقر CTR',
+                    ),
+                    _TimerBox(
+                      value: '${s.totalAdImpressions}',
+                      label: 'مرات الظهور',
+                    ),
+                    _TimerBox(
+                      value: '${s.totalAdRewards}',
+                      label: 'مكافآت 4K',
+                    ),
+                  ],
+                ),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: s.nativeAdsEnabled,
+                activeColor: const Color(0xFF4285F4),
+                title: const Text('تفعيل الإعلانات المدمجة (Native Advanced Ads)',
+                    style: TextStyle(fontSize: 12)),
+                onChanged: (v) => s.saveSettings(newNativeAdsEnabled: v),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: s.appOpenAdsEnabled,
+                activeColor: const Color(0xFF4285F4),
+                title: const Text('تفعيل إعلانات فتح التطبيق (App Open Ads)',
+                    style: TextStyle(fontSize: 12)),
+                onChanged: (v) => s.saveSettings(newAppOpenAdsEnabled: v),
+              ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: s.vipNoAds,
@@ -10180,6 +11275,71 @@ class _AdminGoogleAdsStudioTabState extends State<_AdminGoogleAdsStudioTab> {
                 title: const Text('إعفاء مشتركي VIP من جميع الإعلانات',
                     style: TextStyle(fontSize: 12)),
                 onChanged: (v) => s.saveSettings(newVipNoAds: v),
+              ),
+              const SizedBox(height: 4),
+              const Text('مواضع عرض البانر الإعلاني داخل الشاشات:',
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  FilterChip(
+                    label: const Text('أعلى الرئيسية',
+                        style: TextStyle(fontSize: 10.5)),
+                    selected: s.placeAdsHomeTop,
+                    onSelected: (v) => s.saveSettings(newPlaceAdsHomeTop: v),
+                  ),
+                  FilterChip(
+                    label: const Text('أسفل الرئيسية',
+                        style: TextStyle(fontSize: 10.5)),
+                    selected: s.placeAdsHomeBottom,
+                    onSelected: (v) =>
+                        s.saveSettings(newPlaceAdsHomeBottom: v),
+                  ),
+                  FilterChip(
+                    label: const Text('شاشة الاستوديو',
+                        style: TextStyle(fontSize: 10.5)),
+                    selected: s.placeAdsStudio,
+                    onSelected: (v) => s.saveSettings(newPlaceAdsStudio: v),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'معدل تكرار الإعلان البيني: كل ${s.interstitialFrequency} عمليات تحميل',
+                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+              ),
+              Slider(
+                value: s.interstitialFrequency.toDouble().clamp(1, 10),
+                min: 1,
+                max: 10,
+                divisions: 9,
+                activeColor: const Color(0xFF4285F4),
+                onChanged: (v) =>
+                    s.saveSettings(newInterstitialFreq: v.round()),
+              ),
+              Text(
+                'العائد لكل ألف ظهور (eCPM): \$${s.estimatedEcpmUsd.toStringAsFixed(2)}',
+                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+              ),
+              Slider(
+                value: s.estimatedEcpmUsd.clamp(0.5, 15.0),
+                min: 0.5,
+                max: 15.0,
+                divisions: 29,
+                activeColor: AppColors.success,
+                onChanged: (v) => s.saveSettings(newEstimatedEcpm: v),
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => s.clearAdAnalytics(),
+                  icon: const Icon(Icons.cleaning_services_rounded,
+                      size: 14, color: AppColors.error),
+                  label: const Text('تصفير عداد الإحصائيات الإعلانية',
+                      style: TextStyle(fontSize: 11, color: AppColors.error)),
+                ),
               ),
               const Divider(color: AppColors.border),
               const SizedBox(height: 6),
@@ -10554,8 +11714,33 @@ class _AdminBackgroundEnginesTab extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'إدارة محركات الاستخراج الصامتة بالخلفية (مخفية عن المستخدمين)',
+                'إدارة محركات الاستخراج الصامتة بالخلفية (18 محرك عنقودي)',
                 style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => s.enableAllExtractionEngines(true),
+                      icon: const Icon(Icons.check_circle_outline,
+                          size: 15, color: Colors.white),
+                      label: const Text('تفعيل جميع المحركات (أقصى قوة)',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800)),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.success),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton(
+                    onPressed: () => s.enableAllExtractionEngines(false),
+                    child: const Text('إيقاف الكل',
+                        style: TextStyle(fontSize: 11)),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               ...s.engineStates.entries.map((entry) {
@@ -10698,6 +11883,87 @@ class _AdminSecurityAndVpnTabState extends State<_AdminSecurityAndVpnTab> {
                     style:
                         TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
                 onChanged: (v) => s.saveSettings(newAntiProxy: v),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: s.strictSslVerification,
+                activeColor: AppColors.error,
+                title: const Text(
+                    'فحص الشهادات الرقمية الصارم (Strict SSL Anti-MITM)',
+                    style:
+                        TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                onChanged: (v) => s.saveSettings(newStrictSsl: v),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: s.autoBanOnVpnAttempt,
+                activeColor: AppColors.error,
+                title: const Text(
+                    'حظر تلقائي للجهاز عند تكرار محاولة تشغيل VPN',
+                    style:
+                        TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                onChanged: (v) => s.saveSettings(newAutoBanOnVpn: v),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'الحد الأقصى لمحاولات الدخول الفاشلة قبل الحظر: ${s.maxFailedLoginAttempts} محاولات',
+                style:
+                    const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+              ),
+              Slider(
+                value: s.maxFailedLoginAttempts.toDouble().clamp(3, 15),
+                min: 3,
+                max: 15,
+                divisions: 12,
+                activeColor: AppColors.error,
+                onChanged: (v) =>
+                    s.saveSettings(newMaxFailedLogins: v.round()),
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        s.unblockAllIps();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('تم فك الحظر عن جميع الأجهزة والعناوين'),
+                            backgroundColor: AppColors.success,
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.lock_open_rounded, size: 15),
+                      label: const Text('فك حظر الكل',
+                          style: TextStyle(fontSize: 11)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        final report = s.securityEvents
+                            .take(50)
+                            .map((e) =>
+                                '[${e.createdAt.toIso8601String()}] ${e.eventType} | ${e.username} | ${e.ipOrInterface} | ${e.details}')
+                            .join('\n');
+                        Clipboard.setData(ClipboardData(
+                            text: report.isEmpty
+                                ? 'لا توجد أحداث أمنية مسجلة'
+                                : report));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content:
+                                Text('تم نسخ التقرير الأمني الكامل للحافظة'),
+                            backgroundColor: AppColors.success,
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.assignment_outlined, size: 15),
+                      label: const Text('تصدير التقرير الأمني',
+                          style: TextStyle(fontSize: 11)),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               Row(
